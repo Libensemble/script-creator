@@ -161,6 +161,8 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
   data.auto_gpus = document.getElementById('autoGpus').checked;
   data.num_gpus = rawGpus === "" ? 0 : parseInt(rawGpus);
   data.gpus_line = (!data.auto_gpus && data.num_gpus > 0) ? `num_gpus=${data.num_gpus},` : "";
+  data.needs_mpich_gpu_support = data.auto_gpus || data.num_gpus > 0;
+
   // Cluster logic
   data.cluster_enabled = form.cluster_enable.checked;
   data.cluster_total_nodes = data.cluster_enabled ? form.cluster_total_nodes.value : null;

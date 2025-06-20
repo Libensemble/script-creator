@@ -4,9 +4,9 @@
 #PBS -q <queue_name>
 #PBS -A <myproject>
 
-{{#num_gpus}}
+{{#needs_mpich_gpu_support}}
 export MPICH_GPU_SUPPORT_ENABLED=1
-{{/num_gpus}}
+{{/needs_mpich_gpu_support}}
 
 cd $PBS_O_WORKDIR
 python run_libe.py

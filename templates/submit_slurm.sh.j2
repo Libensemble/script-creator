@@ -8,8 +8,8 @@
 
 # Usually either -p or -C above is used.
 
-{{#num_gpus}}
+{{#needs_mpich_gpu_support}}
 export MPICH_GPU_SUPPORT_ENABLED=1
-{{/num_gpus}}
+{{/needs_mpich_gpu_support}}
 
 python run_libe.py
