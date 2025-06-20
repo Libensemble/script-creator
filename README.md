@@ -1,3 +1,3 @@
-Generate simple libEnsemble scripts from form entry.
+Generate simple libEnsemble scripts from a web form entry.
 
-Try out at: https://shuds13.github.io/libe_script_creator_js/
+Try out at: https://libensemble.github.io/script-creator/
