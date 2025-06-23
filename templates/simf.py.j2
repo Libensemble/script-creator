@@ -58,6 +58,9 @@ def run_{{ app_ref }}(H, persis_info, sim_specs, libE_info):
         num_gpus={{ num_gpus }},
         {{/num_gpus}}
         {{/auto_gpus}}
+        {{#input_usage_cmdline}}
+        app_args=sim_specs["user"].get("input_filename"),
+        {{/input_usage_cmdline}}
     )
 
     # Block until the task finishes

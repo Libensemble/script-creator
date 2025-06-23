@@ -174,6 +174,8 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
   data.input_path = form.input_path.value;
   data.templated_enabled = form.templated_enable.checked;
   data.templated_filename = data.templated_enabled ? form.templated_filename.value : null;
+  data.input_usage = form.input_usage.value;
+  data.input_usage_cmdline = (data.input_usage === "cmdline");
   
   // Collect template variables
   const templateVarInputs = form.querySelectorAll('input[name="template_var"]');
@@ -678,3 +680,21 @@ document.getElementById('saveEntryBtn').onclick = saveFormData;
 document.getElementById('loadEntryBtn').onclick = loadFormData;
 document.getElementById('deleteEntryBtn').onclick = deleteFormData;
 document.addEventListener('DOMContentLoaded', updateSavedEntriesDropdown);
+document.addEventListener('DOMContentLoaded', function() {
+  const dirBtn = document.getElementById('inputUsageDir');
+  const cmdBtn = document.getElementById('inputUsageCmd');
+  if (dirBtn && cmdBtn) {
+    dirBtn.onclick = function() {
+      dirBtn.classList.add('active');
+      cmdBtn.classList.remove('active');
+      dirBtn.querySelector('input').checked = true;
+      cmdBtn.querySelector('input').checked = false;
+    };
+    cmdBtn.onclick = function() {
+      cmdBtn.classList.add('active');
+      dirBtn.classList.remove('active');
+      cmdBtn.querySelector('input').checked = true;
+      dirBtn.querySelector('input').checked = false;
+    };
+  }
+});
