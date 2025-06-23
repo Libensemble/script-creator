@@ -215,19 +215,6 @@
               <label class="checkbox-label" style="margin-bottom: 0; margin-right: 0;">
                 <input type="radio" name="input_type" value="directory"> Directory
               </label>
-              <span style="margin-left: 18px; font-size: 11px;">
-                Input file is:
-                <span class="toggle-group" style="display: inline-flex; gap: 2px; margin-left: 4px;">
-                  <label class="toggle-option active" id="inputUsageDir" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
-                    <input type="radio" name="input_usage" value="directory" checked style="display:none;">
-                    read from run dir
-                  </label>
-                  <label class="toggle-option" id="inputUsageCmd" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
-                    <input type="radio" name="input_usage" value="cmdline" style="display:none;">
-                    in command line
-                  </label>
-                </span>
-              </span>
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 8px;">
@@ -323,6 +310,21 @@ beam_height: {{bh}}
                 The number of processes / nodes are set to match.
               </span>
             </label>
+          </div>
+          <div style="margin-top: 12px; margin-bottom: 8px;">
+            <span style="font-size: 11px;">
+              Input file is:
+              <span class="toggle-group" style="display: inline-flex; gap: 2px; margin-left: 4px;">
+                <label class="toggle-option active" id="inputUsageDir" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                  <input type="radio" name="input_usage" value="directory" checked style="display:none;">
+                  read from run dir
+                </label>
+                <label class="toggle-option" id="inputUsageCmd" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                  <input type="radio" name="input_usage" value="cmdline" style="display:none;">
+                  in command line
+                </label>
+              </span>
+            </span>
           </div>
           <fieldset style="margin-top:12px;">
             <legend><strong>Output Parsing</strong></legend>
