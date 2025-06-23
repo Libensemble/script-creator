@@ -35,7 +35,7 @@ def run_{{ app_ref }}(H, persis_info, sim_specs, libE_info):
 
     calc_status = 0
 
-    set_input_file_params(H, sim_specs, ints=True)
+    set_input_file_params(H, sim_specs)
 
     # Retrieve our MPI Executor
     exctr = libE_info["executor"]
