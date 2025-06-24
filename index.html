@@ -315,13 +315,15 @@ beam_height: {{bh}}
             <span style="font-size: 11px;">
               Input file is:
               <span class="toggle-group" style="display: inline-flex; gap: 2px; margin-left: 4px;">
-                <label class="toggle-option active" id="inputUsageDir" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                <label class="toggle-option active" id="inputUsageDir" style="padding: 2px 8px; font-size: 11px; cursor: pointer; position: relative;">
                   <input type="radio" name="input_usage" value="directory" checked style="display:none;">
                   read from run dir
+                  <span id="runDirTooltip" style="display:none; position: absolute; left: 0; top: 120%; z-index: 10; background: #f6f8fa; color: #222; padding: 6px 10px; border-radius: 6px; border: 1px solid #bbb; font-size: 10px; min-width: 220px; box-shadow: 0 2px 8px rgba(0,0,0,0.18); pointer-events: none;">Input file only needs to be present in the run directory</span>
                 </label>
-                <label class="toggle-option" id="inputUsageCmd" style="padding: 2px 8px; font-size: 11px; cursor: pointer;">
+                <label class="toggle-option" id="inputUsageCmd" style="padding: 2px 8px; font-size: 11px; cursor: pointer; position: relative;">
                   <input type="radio" name="input_usage" value="cmdline" style="display:none;">
                   in command line
+                  <span id="cmdLineTooltip" style="display:none; position: absolute; left: 0; top: 120%; z-index: 10; background: #f6f8fa; color: #222; padding: 6px 10px; border-radius: 6px; border: 1px solid #bbb; font-size: 10px; min-width: 220px; box-shadow: 0 2px 8px rgba(0,0,0,0.18); pointer-events: none;">Input file is specified on run line</span>
                 </label>
               </span>
             </span>

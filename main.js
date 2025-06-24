@@ -698,3 +698,97 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 });
+document.addEventListener('DOMContentLoaded', function() {
+  // --- Input Usage Dir Tooltip and Filename Logic ---
+  const runDirLabel = document.getElementById('inputUsageDir');
+  const runDirTooltip = document.getElementById('runDirTooltip');
+  const cmdLineLabel = document.getElementById('inputUsageCmd');
+  const cmdLineTooltip = document.getElementById('cmdLineTooltip');
+  const inputTypeRadios = document.querySelectorAll('input[name="input_type"]');
+  const inputPathInput = document.querySelector('input[name="input_path"]');
+  const templatedEnable = document.getElementById('templatedEnable');
+  const templatedFilenameInput = document.querySelector('input[name="templated_filename"]');
+
+  function getRunDirFilename() {
+    let filename = '';
+    const inputType = document.querySelector('input[name="input_type"]:checked').value;
+    const inputPath = inputPathInput.value.trim();
+    const templatedChecked = templatedEnable.checked;
+    const templatedFilename = templatedFilenameInput ? templatedFilenameInput.value.trim() : '';
+    if (inputType === 'file' && inputPath) {
+      filename = inputPath.split(/[\\/]/).pop();
+    } else if (inputType === 'directory' && templatedChecked && templatedFilename) {
+      filename = templatedFilename;
+    }
+    return filename;
+  }
+
+  function updateRunDirTooltip() {
+    const filename = getRunDirFilename();
+    runDirTooltip.textContent = 'Input file' + (filename ? ` (${filename})` : '') + ' only needs to be present in the run directory';
+  }
+
+  function updateCmdLineTooltip() {
+    const filename = getRunDirFilename();
+    const cmdRadio = document.querySelector('input[name="input_usage"][value="cmdline"]');
+    const isSelected = cmdRadio && cmdRadio.checked;
+    cmdLineTooltip.textContent = 'Input file' + (filename ? ` (${filename})` : '') + ' is specified on run line' + (isSelected ? '. See app_args to modify' : '');
+  }
+
+  // Show/hide tooltip on hover/focus for run dir
+  if (runDirLabel && runDirTooltip) {
+    runDirLabel.addEventListener('mouseenter', function() {
+      runDirTooltip.style.display = 'block';
+    });
+    runDirLabel.addEventListener('mouseleave', function() {
+      runDirTooltip.style.display = 'none';
+    });
+    runDirLabel.addEventListener('focus', function() {
+      runDirTooltip.style.display = 'block';
+    });
+    runDirLabel.addEventListener('blur', function() {
+      runDirTooltip.style.display = 'none';
+    });
+  }
+  // Show/hide tooltip on hover/focus for cmd line
+  if (cmdLineLabel && cmdLineTooltip) {
+    function showCmdLineTooltip() {
+      updateCmdLineTooltip();
+      cmdLineTooltip.style.display = 'block';
+    }
+    function hideCmdLineTooltip() {
+      cmdLineTooltip.style.display = 'none';
+    }
+    cmdLineLabel.addEventListener('mouseenter', showCmdLineTooltip);
+    cmdLineLabel.addEventListener('mouseleave', hideCmdLineTooltip);
+    cmdLineLabel.addEventListener('focus', showCmdLineTooltip);
+    cmdLineLabel.addEventListener('blur', hideCmdLineTooltip);
+    // Hide tooltip immediately if radio is deselected or other radio is selected
+    const cmdRadio = document.querySelector('input[name="input_usage"][value="cmdline"]');
+    if (cmdRadio) {
+      cmdRadio.addEventListener('change', function() {
+        if (!cmdRadio.checked) {
+          hideCmdLineTooltip();
+        }
+      });
+    }
+    const dirRadio = document.querySelector('input[name="input_usage"][value="directory"]');
+    if (dirRadio) {
+      dirRadio.addEventListener('change', function() {
+        if (dirRadio.checked) {
+          hideCmdLineTooltip();
+        }
+      });
+    }
+  }
+
+  // Update tooltips on relevant input changes
+  inputTypeRadios.forEach(radio => radio.addEventListener('change', function() { updateRunDirTooltip(); updateCmdLineTooltip(); }));
+  if (inputPathInput) inputPathInput.addEventListener('input', function() { updateRunDirTooltip(); updateCmdLineTooltip(); });
+  if (templatedEnable) templatedEnable.addEventListener('change', function() { updateRunDirTooltip(); updateCmdLineTooltip(); });
+  if (templatedFilenameInput) templatedFilenameInput.addEventListener('input', function() { updateRunDirTooltip(); updateCmdLineTooltip(); });
+
+  // Initial update
+  updateRunDirTooltip();
+  updateCmdLineTooltip();
+});
