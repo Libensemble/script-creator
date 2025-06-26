@@ -46,17 +46,15 @@ if __name__ == "__main__":
         sim_f=run_{{ app_ref }},
         inputs=["x"],
         outputs=[("f", float)],
-        {{#has_template_vars}}
-        {{#input_file_basename}}
-        user={"input_filename": "{{ input_file_basename }}", "input_names": [{{ template_vars_list }}]},
-        {{/input_file_basename}}
-        {{^input_file_basename}}
-        user={"input_filename": "{{ templated_filename }}", "input_names": [{{ template_vars_list }}]},
-        {{/input_file_basename}}
-        {{/has_template_vars}}
-        {{^has_template_vars}}
+        {{#input_filename}}{{#has_input_names}}
+        user={"input_filename": "{{ input_filename }}", "input_names": [{{ template_vars_list }}]},
+        {{/has_input_names}}{{^has_input_names}}
+        user={"input_filename": "{{ input_filename }}"},
+        {{/has_input_names}}{{/input_filename}}{{^input_filename}}{{#has_input_names}}
+        user={"input_names": [{{ template_vars_list }}]},
+        {{/has_input_names}}{{^has_input_names}}
         user={},
-        {{/has_template_vars}}
+        {{/has_input_names}}{{/input_filename}}
     )
 
     n = {{ dimension }}
