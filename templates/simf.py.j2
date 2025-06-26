@@ -43,6 +43,9 @@ def run_{{ app_ref }}(H, persis_info, sim_specs, libE_info):
     # Submit our {{ app_ref }} app for execution.
     task = exctr.submit(
         app_name="{{ app_ref }}",
+        {{#input_usage_cmdline}}
+        app_args=sim_specs["user"].get("input_filename"),
+        {{/input_usage_cmdline}}
         {{#auto_gpus}}
         auto_assign_gpus=True,
         match_procs_to_gpus=True,
@@ -58,9 +61,6 @@ def run_{{ app_ref }}(H, persis_info, sim_specs, libE_info):
         num_gpus={{ num_gpus }},
         {{/num_gpus}}
         {{/auto_gpus}}
-        {{#input_usage_cmdline}}
-        app_args=sim_specs["user"].get("input_filename"),
-        {{/input_usage_cmdline}}
     )
 
     # Block until the task finishes
