@@ -15,7 +15,7 @@ const GEN_TO_ALLOC = {
   "default": {
     alloc_module: "start_only_persistent",
     alloc_function: "only_persistent_gens",
-    alloc_specs_user: 'user={"async_return": False},'
+    alloc_specs_user: 'user={"async_return": True},'
   }
 };
 
