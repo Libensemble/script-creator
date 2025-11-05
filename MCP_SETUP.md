@@ -55,6 +55,8 @@ Once set up, you can ask Cursor's AI assistant to "create libEnsemble scripts" w
 
 The AI will use the `CreateLibEnsembleScripts` tool to generate libEnsemble scripts including `run_libe.py` and `simf.py`.
 
+See example interactions at https://github.com/Libensemble/script-creator/issues/3
+
 ## Troubleshooting
 
 - **Tool not appearing?** Check that the path in `mcp.json` is absolute and correct
