@@ -13,6 +13,7 @@ import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 const Mustache = require("mustache");
+const { processTemplateData } = require("./processTemplateData.js");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const server = new Server(
@@ -75,85 +76,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const params = request.params.arguments || {};
   
   try {
-    // Process parameters similar to main.js
+    // Process parameters using shared logic
     const data = { ...params };
     
-    // Set dimension-based arrays
-    data.dimension = parseInt(data.dimension || 2);
-    data.lb_array = 'np.array([' + Array(data.dimension).fill(0.0).join(', ') + '])';
-    data.ub_array = 'np.array([' + Array(data.dimension).fill(3.0).join(', ') + '])';
-    
-    // GPU settings
-    data.auto_gpus = data.auto_gpus || false;
-    data.num_gpus = parseInt(data.gpus || 0);
-    data.gpus_line = (!data.auto_gpus && data.num_gpus > 0) ? `num_gpus=${data.num_gpus},` : "";
-    data.needs_mpich_gpu_support = data.auto_gpus || data.num_gpus > 0;
-    
-    // Cluster settings
-    data.cluster_enabled = data.cluster_enable || false;
-    data.total_nodes = data.cluster_total_nodes || data.total_nodes || 1;
-    data.scheduler_type = data.scheduler_type || 'slurm';
-    
-    // Input handling
-    data.input_type = data.input_type || 'file';
-    data.input_usage = data.input_usage || 'directory';
-    data.input_usage_cmdline = (data.input_usage === "cmdline");
-    
-    // Set template data based on input type and templated settings
-    if (data.input_type === 'file') {
-      data.input_file = data.input_path;
-      data.input_file_basename = data.input_path ? data.input_path.split(/[\\/]/).pop() : null;
-      data.sim_input_dir = null;
-      data.templated_filename = null;
-    } else {
-      data.input_file = null;
-      data.input_file_basename = null;
-      data.sim_input_dir = data.input_path;
-      data.templated_filename = data.templated_filename || null;
+    // Load generator specs
+    let generatorSpecs = {};
+    try {
+      const generatorSpecsPath = path.join(__dirname, 'data/generator_specs.json');
+      generatorSpecs = JSON.parse(readFileSync(generatorSpecsPath, 'utf8'));
+    } catch (e) {
+      // If file doesn't exist, use empty object
+      generatorSpecs = {};
     }
     
-    // Determine input_filename for user/app_args
-    const templateVars = Array.isArray(data.template_vars) ? data.template_vars : [];
-    const inputFilename = (() => {
-      if (data.input_type === 'file' && data.input_path) {
-        return data.input_path.split(/[\\/]/).pop();
-      } else if (data.input_type === 'directory' && data.templated_enable && data.templated_filename) {
-        return data.templated_filename;
-      }
-      return '';
-    })();
+    // Process template data using shared function
+    processTemplateData(data, generatorSpecs);
     
-    // Set input_filename when "in command line" is selected OR when there are templated values
-    const needsInputFilename = (data.input_usage === 'cmdline') || (data.templated_enable && templateVars.length > 0);
-    if (needsInputFilename && inputFilename) {
-      data.input_filename = inputFilename;
-    } else {
-      delete data.input_filename;
-    }
-    
-    // Only set input_names if there are templated values
-    if (data.templated_enable && templateVars.length > 0) {
-      data.has_template_vars = true;
-      data.template_vars_list = templateVars.map(v => `"${v}"`).join(', ');
-      data.input_names = templateVars;
-      data.has_input_names = true;
-    } else {
-      data.has_template_vars = false;
-      data.template_vars_list = '';
-      delete data.input_names;
-      data.has_input_names = false;
-    }
-    
-    // Allocation settings
-    const genFunc = (data.gen_function || '').toLowerCase();
-    if (genFunc.includes('aposmm')) {
-      data.alloc_module = 'persistent_aposmm_alloc';
-      data.alloc_function = 'persistent_aposmm_alloc';
-      data.alloc_specs_user = '';
-    } else {
-      data.alloc_module = 'start_only_persistent';
-      data.alloc_function = 'only_persistent_gens';
-      data.alloc_specs_user = 'user={"async_return": True},';
+    // Handle custom gen_specs if needed (similar to main.js)
+    if (data._custom_spec) {
+      // For now, skip custom gen_specs rendering in MCP (would need Mustache rendering)
+      // This can be added later if needed
+      data.custom_gen_specs = null;
     }
     
     // Set default objective code
