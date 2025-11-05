@@ -41,7 +41,7 @@ Create or edit `~/.cursor/mcp.json` and add the path to the `mcp_server.mjs` fil
 }
 ```
 
-**Important:** Replace `/absolute/path/to/script-creator/` with the path from the `pwd` command above.
+**Important:** Replace `/absolute/path/to/script-creator/` with the correct path.
 
 ### 3. Restart Cursor
 
