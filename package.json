@@ -1,0 +1,25 @@
+{
+  "name": "script-creator",
+  "version": "1.0.0",
+  "description": "Generate simple libEnsemble scripts from a web form entry.",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Libensemble/script-creator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Libensemble/script-creator/issues"
+  },
+  "homepage": "https://github.com/Libensemble/script-creator#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "express": "^5.1.0",
+    "mustache": "^4.2.0"
+  }
+}
