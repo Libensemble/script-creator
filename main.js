@@ -6,18 +6,7 @@ const templatePaths = {
 };
 let generatorSpecs = {};
 fetch("data/generator_specs.json").then(res => res.json()).then(data => { generatorSpecs = data; });
-const GEN_TO_ALLOC = {
-  "aposmm": {
-    alloc_module: "persistent_aposmm_alloc",
-    alloc_function: "persistent_aposmm_alloc",
-    alloc_specs_user: ""
-  },
-  "default": {
-    alloc_module: "start_only_persistent",
-    alloc_function: "only_persistent_gens",
-    alloc_specs_user: 'user={"async_return": True},'
-  }
-};
+// GEN_TO_ALLOC is now in processTemplateData.js
 
 // Keep only setupTemplateVarButtons global since it needs to be called from loadFormData
 function setupTemplateVarButtons() {
@@ -129,114 +118,39 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
       data[k] = v;
     }
   }
-  // Set dimension, lb_array, ub_array before rendering customGenSpecsStr
-  data.dimension = parseInt(form.dimension.value);
-  data.lb_array = 'np.array([' + Array(data.dimension).fill(0.0).join(', ') + '])';
-  data.ub_array = 'np.array([' + Array(data.dimension).fill(3.0).join(', ') + '])';
-  // --- Custom gen_specs logic ---
-  const genModule = (data.gen_module || '').toLowerCase().trim();
-  const genFunc = (data.gen_function || '').toLowerCase().trim();
-  const combinedKey = genModule + '.' + genFunc;
-  let customSpec = null;
-  // Try direct match (case-insensitive, trimmed)
-  for (const key in generatorSpecs) {
-    if (key.toLowerCase().trim() === combinedKey) {
-      customSpec = generatorSpecs[key];
-      break;
-    }
-  }
-  // Pretty-print GenSpecs arguments for Python
-
-  let customGenSpecsStr = null;
-  if (customSpec) {
-    if (typeof customSpec === 'string') {
-      customGenSpecsStr = customSpec;
-    } else {
-      customGenSpecsStr = prettyPrintPythonArgs(customSpec);
-    }
-  }
-  data.custom_gen_specs = customGenSpecsStr ? Mustache.render(customGenSpecsStr, data) : null;
-  // --- End custom gen_specs logic ---
-  const rawGpus = form.gpus.value.trim();
-  data.auto_gpus = document.getElementById('autoGpus').checked;
-  data.num_gpus = rawGpus === "" ? 0 : parseInt(rawGpus);
-  data.gpus_line = (!data.auto_gpus && data.num_gpus > 0) ? `num_gpus=${data.num_gpus},` : "";
-  data.needs_mpich_gpu_support = data.auto_gpus || data.num_gpus > 0;
-
-  // Cluster logic
-  data.cluster_enabled = form.cluster_enable.checked;
-  data.cluster_total_nodes = data.cluster_enabled ? form.cluster_total_nodes.value : null;
-  data.scheduler_type = data.cluster_enabled ? form.scheduler_type.value : null;
-  data.total_nodes = data.cluster_total_nodes; // For template compatibility
-  
-  // Input handling logic
-  data.input_type = form.input_type.value;
-  data.input_path = form.input_path.value;
-  data.templated_enabled = form.templated_enable.checked;
-  data.templated_filename = data.templated_enabled ? form.templated_filename.value : null;
-  data.input_usage = form.input_usage.value;
-  data.input_usage_cmdline = (data.input_usage === "cmdline");
-  
-  // Collect template variables
+  // Collect template variables from form
   const templateVarInputs = form.querySelectorAll('input[name="template_var"]');
   const templateVars = Array.from(templateVarInputs)
     .map(input => input.value.trim())
     .filter(val => val !== '');
   data.template_vars = templateVars;
   
-  // Set template data based on input type and templated settings
-  if (data.input_type === 'file') {
-    data.input_file = data.input_path;
-    data.input_file_basename = data.input_path.split(/[\\/]/).pop();
-    data.sim_input_dir = null;
-    data.templated_filename = null;
-  } else {
-    data.input_file = null;
-    data.input_file_basename = null;
-    data.sim_input_dir = data.input_path;
-    data.templated_filename = form.templated_filename.value;
-  }
+  // Collect form data into data object
+  data.dimension = parseInt(form.dimension.value);
+  data.auto_gpus = document.getElementById('autoGpus').checked;
+  data.gpus = form.gpus.value.trim();
+  data.cluster_enable = form.cluster_enable.checked;
+  data.cluster_total_nodes = data.cluster_enable ? form.cluster_total_nodes.value : null;
+  data.scheduler_type = data.cluster_enable ? form.scheduler_type.value : null;
+  data.input_type = form.input_type.value;
+  data.input_path = form.input_path.value;
+  data.templated_enable = form.templated_enable.checked;
+  data.templated_filename = data.templated_enable ? form.templated_filename.value : null;
+  data.input_usage = form.input_usage.value;
   
-  // Determine input_filename for user/app_args
-  const inputFilename = (() => {
-    if (data.input_type === 'file' && data.input_path) {
-      return data.input_path.split(/[\\/]/).pop();
-    } else if (data.input_type === 'directory' && data.templated_enabled && data.templated_filename) {
-      return data.templated_filename;
+  // Process template data using shared function
+  processTemplateData(data, generatorSpecs);
+  
+  // Handle custom gen_specs (browser-specific, uses Mustache)
+  if (data._custom_spec) {
+    let customGenSpecsStr = null;
+    if (typeof data._custom_spec === 'string') {
+      customGenSpecsStr = data._custom_spec;
+    } else {
+      customGenSpecsStr = prettyPrintPythonArgs(data._custom_spec);
     }
-    return '';
-  })();
-
-  // Set input_filename when "in command line" is selected OR when there are templated values
-  const needsInputFilename = (data.input_usage === 'cmdline') || (data.templated_enabled && templateVars.length > 0);
-  if (needsInputFilename && inputFilename) {
-    data.input_filename = inputFilename;
-  } else {
-    delete data.input_filename;
+    data.custom_gen_specs = customGenSpecsStr ? Mustache.render(customGenSpecsStr, data) : null;
   }
-
-  // Only set input_names if there are templated values
-  if (data.templated_enabled && templateVars.length > 0) {
-    data.has_template_vars = true;
-    data.template_vars_list = templateVars.map(v => `"${v}"`).join(', ');
-    data.input_names = templateVars;
-    data.has_input_names = true;
-  } else {
-    data.has_template_vars = false;
-    data.template_vars_list = '';
-    delete data.input_names;
-    data.has_input_names = false;
-  }
-  
-  let allocInfo;
-  if (data.gen_function && data.gen_function.toLowerCase().includes("aposmm")) {
-    allocInfo = GEN_TO_ALLOC["aposmm"];
-  } else {
-    allocInfo = GEN_TO_ALLOC["default"];
-  }
-  data.alloc_module = allocInfo.alloc_module;
-  data.alloc_function = allocInfo.alloc_function;
-  data.alloc_specs_user = allocInfo.alloc_specs_user;
   
   // Set set_objective_code just before rendering templates, to ensure it is always present
   if (document.getElementById('customSetObjective').checked) {
