@@ -53,7 +53,7 @@ Once set up, you can ask Cursor's AI assistant to "create libEnsemble scripts" w
 
 - "Create libEnsemble scripts using APOSMM generator optimizing two parameters. The executable for each simulation to run is /my/path/test.x and the input file is input.txt. The variables to alter in that file are called dim_x and dim_y. They both have upper and lower bounds of -1 to 1. Create the scripts is a sub-directory called my_run."
 
-The AI will use the `CreateLibEnsembleScripts` tool to generate libEnsemble scripts including `run_libe.py` and `simf.py`.
+The AI will use the `CreateLibEnsembleScripts` tool to generate libEnsemble scripts including `run_libe.py` and `simf.py`. A SLURM or PBS script will be supplied if requested.
 
 See example interactions at https://github.com/Libensemble/script-creator/issues/3
 
