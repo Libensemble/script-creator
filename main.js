@@ -226,10 +226,6 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
   let isCustomSetObjective = false;
   let lastDefaultSetObjectiveCode = '';
 
-  function getDefaultSetObjectiveCode(data) {
-    return `def set_objective_value():\n    try:\n        data = np.loadtxt(\"${data.app_ref || ''}.stat\")\n        return data[-1]\n    except Exception:\n        return np.nan`;
-  }
-
   function updateSetObjectiveEditor(defaultCode) {
     const editor = document.getElementById('setObjectiveEditor');
     if (editor.value.trim() === '') {
