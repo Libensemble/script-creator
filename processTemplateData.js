@@ -124,7 +124,7 @@ function processTemplateData(data, generatorSpecs = {}) {
 function getDefaultSetObjectiveCode(data) {
   return `def set_objective_value():
     try:
-        data = np.loadtxt("${data.app_ref || ''}.stat")
+        data = np.loadtxt("${data.app_ref || ''}.stat", ndmin=1)
         return data[-1]
     except Exception:
         return np.nan`;
