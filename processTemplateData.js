@@ -121,14 +121,24 @@ function processTemplateData(data, generatorSpecs = {}) {
   return data;
 }
 
+function getDefaultSetObjectiveCode(data) {
+  return `def set_objective_value():
+    try:
+        data = np.loadtxt("${data.app_ref || ''}.stat")
+        return data[-1]
+    except Exception:
+        return np.nan`;
+}
+
 // Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { processTemplateData, GEN_TO_ALLOC };
+  module.exports = { processTemplateData, GEN_TO_ALLOC, getDefaultSetObjectiveCode };
 }
 
 // Make available globally for browser
 if (typeof window !== 'undefined') {
   window.processTemplateData = processTemplateData;
   window.GEN_TO_ALLOC = GEN_TO_ALLOC;
+  window.getDefaultSetObjectiveCode = getDefaultSetObjectiveCode;
 }
 

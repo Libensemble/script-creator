@@ -13,7 +13,7 @@ import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 const Mustache = require("mustache");
-const { processTemplateData } = require("./processTemplateData.js");
+const { processTemplateData, getDefaultSetObjectiveCode } = require("./processTemplateData.js");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const server = new Server(
@@ -101,12 +101,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     
     // Set default objective code
     if (!data.set_objective_code) {
-      data.set_objective_code = `def set_objective_value():
-    try:
-        data = np.loadtxt("${data.app_ref || ''}.stat")
-        return data[-1]
-    except Exception:
-        return np.nan`;
+      data.set_objective_code = getDefaultSetObjectiveCode(data);
     }
     
     // Load templates
