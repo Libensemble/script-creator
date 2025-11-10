@@ -222,68 +222,6 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
   document.addEventListener('DOMContentLoaded', setupCopyIcons);
   // Also re-setup copy icons after scripts are generated (in case of rerender)
   setupCopyIcons();
-  // --- Output Parsing Custom set_objective_value() logic ---
-  let isCustomSetObjective = false;
-  let lastDefaultSetObjectiveCode = '';
-
-  function updateSetObjectiveEditor(defaultCode) {
-    const editor = document.getElementById('setObjectiveEditor');
-    if (editor.value.trim() === '') {
-      editor.value = defaultCode;
-    }
-    lastDefaultSetObjectiveCode = defaultCode;
-  }
-
-  function setCustomizeEditorVisibility() {
-    isCustomSetObjective = document.getElementById('customSetObjective').checked;
-    const container = document.getElementById('setObjectiveEditorContainer');
-    const editor = document.getElementById('setObjectiveEditor');
-    if (isCustomSetObjective) {
-      container.style.display = '';
-      // Pre-fill with default code if empty
-      const form = document.getElementById('scriptForm');
-      const data = {};
-      for (const [k,v] of new FormData(form).entries()) {
-        data[k] = v;
-      }
-      const defaultCode = getDefaultSetObjectiveCode(data);
-      if (editor.value.trim() === '') {
-        editor.value = defaultCode;
-      }
-      editor.disabled = false;
-    } else {
-      container.style.display = 'none';
-    }
-  }
-
-  document.getElementById('customSetObjective').addEventListener('change', function() {
-    setCustomizeEditorVisibility();
-  });
-  // Ensure visibility is set immediately after attaching the event listener
-  setCustomizeEditorVisibility();
-
-  // On form changes, update the set_objective code if customizing and the box is empty
-  function updateSetObjectiveFromForm() {
-    if (!isCustomSetObjective) return;
-    const form = document.getElementById('scriptForm');
-    const data = {};
-    for (const [k,v] of new FormData(form).entries()) {
-      data[k] = v;
-    }
-    const defaultCode = getDefaultSetObjectiveCode(data);
-    updateSetObjectiveEditor(defaultCode);
-  }
-
-  // Initial set on DOMContentLoaded
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      setCustomizeEditorVisibility();
-      updateSetObjectiveFromForm();
-    });
-  } else {
-    setCustomizeEditorVisibility();
-    updateSetObjectiveFromForm();
-  }
 };
 document.getElementById("fillBtn").onclick = function() {
     const f = document.forms[0];
@@ -469,6 +407,81 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
     });
+  }
+});
+// --- Custom set_objective_value() editor visibility logic ---
+document.addEventListener('DOMContentLoaded', function() {
+  let isCustomSetObjective = false;
+  let lastDefaultSetObjectiveCode = '';
+
+  function updateSetObjectiveEditor(defaultCode) {
+    const editor = document.getElementById('setObjectiveEditor');
+    if (editor && editor.value.trim() === '') {
+      editor.value = defaultCode;
+    }
+    lastDefaultSetObjectiveCode = defaultCode;
+  }
+
+  function setCustomizeEditorVisibility() {
+    const checkbox = document.getElementById('customSetObjective');
+    if (!checkbox) return;
+    
+    isCustomSetObjective = checkbox.checked;
+    const container = document.getElementById('setObjectiveEditorContainer');
+    const editor = document.getElementById('setObjectiveEditor');
+    
+    if (!container || !editor) return;
+    
+    if (isCustomSetObjective) {
+      container.style.display = '';
+      // Pre-fill with default code if empty
+      const form = document.getElementById('scriptForm');
+      if (!form) return;
+      const data = {};
+      for (const [k,v] of new FormData(form).entries()) {
+        data[k] = v;
+      }
+      const defaultCode = getDefaultSetObjectiveCode(data);
+      if (editor.value.trim() === '') {
+        editor.value = defaultCode;
+      }
+      editor.disabled = false;
+    } else {
+      container.style.display = 'none';
+    }
+  }
+
+  const checkbox = document.getElementById('customSetObjective');
+  if (checkbox) {
+    checkbox.addEventListener('change', function() {
+      setCustomizeEditorVisibility();
+    });
+    // Ensure visibility is set immediately after attaching the event listener
+    setCustomizeEditorVisibility();
+  }
+
+  // On form changes, update the set_objective code if customizing and the box is empty
+  function updateSetObjectiveFromForm() {
+    if (!isCustomSetObjective) return;
+    const form = document.getElementById('scriptForm');
+    if (!form) return;
+    const data = {};
+    for (const [k,v] of new FormData(form).entries()) {
+      data[k] = v;
+    }
+    const defaultCode = getDefaultSetObjectiveCode(data);
+    updateSetObjectiveEditor(defaultCode);
+  }
+
+  // Initial set
+  setCustomizeEditorVisibility();
+  updateSetObjectiveFromForm();
+  
+  // Also update when form fields change (especially app_ref)
+  const form = document.getElementById('scriptForm');
+  if (form) {
+    form.addEventListener('input', updateSetObjectiveFromForm);
+    form.addEventListener('change', updateSetObjectiveFromForm);
   }
 });
 // --- Subtle Load/Save dropdown logic ---
