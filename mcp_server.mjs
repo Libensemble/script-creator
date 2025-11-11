@@ -13,7 +13,7 @@ import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 const Mustache = require("mustache");
-const { processTemplateData, getDefaultSetObjectiveCode } = require("./processTemplateData.js");
+const { processTemplateData, renderCustomGenSpecs, getDefaultSetObjectiveCode } = require("./processTemplateData.js");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const server = new Server(
@@ -92,12 +92,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Process template data using shared function
     processTemplateData(data, generatorSpecs);
     
-    // Handle custom gen_specs if needed (similar to main.js)
-    if (data._custom_spec) {
-      // For now, skip custom gen_specs rendering in MCP (would need Mustache rendering)
-      // This can be added later if needed
-      data.custom_gen_specs = null;
-    }
+    // Disable HTML escaping for Mustache (needed for both custom_gen_specs and template rendering)
+    Mustache.escape = text => text;
+    
+    // Render custom gen_specs using shared function
+    renderCustomGenSpecs(data, Mustache.render.bind(Mustache));
     
     // Set default objective code
     if (!data.set_objective_code) {
@@ -107,9 +106,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Load templates
     const runTpl = readFileSync(path.join(__dirname, 'templates/run_libe.py.j2'), 'utf8');
     const simfTpl = readFileSync(path.join(__dirname, 'templates/simf.py.j2'), 'utf8');
-    
-    // Disable HTML escaping for Mustache
-    Mustache.escape = text => text;
     
     // Render templates
     const runRendered = Mustache.render(runTpl, data);

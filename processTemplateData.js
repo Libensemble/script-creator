@@ -33,8 +33,7 @@ function processTemplateData(data, generatorSpecs = {}) {
     }
   }
   
-  // Note: customGenSpecsStr rendering would need Mustache, handled separately
-  // This function just identifies if custom spec exists
+  // Store the custom spec for rendering
   data._custom_spec = customSpec;
   
   // GPU settings
@@ -121,6 +120,21 @@ function processTemplateData(data, generatorSpecs = {}) {
   return data;
 }
 
+function renderCustomGenSpecs(data, mustacheRenderer) {
+  // Render custom gen_specs if it exists (identical logic for both browser and Node.js)
+  if (data._custom_spec) {
+    let customGenSpecsStr = null;
+    if (typeof data._custom_spec === 'string') {
+      customGenSpecsStr = data._custom_spec;
+    } else {
+      // If it's an object, would need prettyPrintPythonArgs, but generator_specs.json has strings
+      customGenSpecsStr = JSON.stringify(data._custom_spec);
+    }
+    data.custom_gen_specs = customGenSpecsStr ? mustacheRenderer(customGenSpecsStr, data) : null;
+  }
+  return data;
+}
+
 function getDefaultSetObjectiveCode(data) {
   return `def set_objective_value():
     try:
@@ -132,12 +146,13 @@ function getDefaultSetObjectiveCode(data) {
 
 // Export for Node.js
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { processTemplateData, GEN_TO_ALLOC, getDefaultSetObjectiveCode };
+  module.exports = { processTemplateData, renderCustomGenSpecs, GEN_TO_ALLOC, getDefaultSetObjectiveCode };
 }
 
 // Make available globally for browser
 if (typeof window !== 'undefined') {
   window.processTemplateData = processTemplateData;
+  window.renderCustomGenSpecs = renderCustomGenSpecs;
   window.GEN_TO_ALLOC = GEN_TO_ALLOC;
   window.getDefaultSetObjectiveCode = getDefaultSetObjectiveCode;
 }

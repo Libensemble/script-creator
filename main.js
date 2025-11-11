@@ -141,16 +141,11 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
   // Process template data using shared function
   processTemplateData(data, generatorSpecs);
   
-  // Handle custom gen_specs (browser-specific, uses Mustache)
-  if (data._custom_spec) {
-    let customGenSpecsStr = null;
-    if (typeof data._custom_spec === 'string') {
-      customGenSpecsStr = data._custom_spec;
-    } else {
-      customGenSpecsStr = prettyPrintPythonArgs(data._custom_spec);
-    }
-    data.custom_gen_specs = customGenSpecsStr ? Mustache.render(customGenSpecsStr, data) : null;
-  }
+  // Disable HTML escaping for Mustache
+  Mustache.escape = text => text;
+  
+  // Render custom gen_specs using shared function
+  renderCustomGenSpecs(data, Mustache.render.bind(Mustache));
   
   // Set set_objective_code just before rendering templates, to ensure it is always present
   if (document.getElementById('customSetObjective').checked) {
@@ -159,7 +154,6 @@ document.getElementById('scriptForm').onsubmit = async function(e) {
     data.set_objective_code = getDefaultSetObjectiveCode(data);
   }
   const { runTpl, simfTpl, batchTpl } = await fetchTemplates(data.cluster_enabled, data.scheduler_type);
-  Mustache.escape=text=>text;
   const runRendered = Mustache.render(runTpl,data);
   const simfRendered = Mustache.render(simfTpl,data);
   let batchRendered = null;
