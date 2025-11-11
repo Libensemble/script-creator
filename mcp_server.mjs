@@ -57,6 +57,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             procs: { type: "string", description: "Number of processes" },
             gpus: { type: "string", description: "Number of GPUs" },
             input_usage: { type: "string", description: "Input usage: directory or cmdline" },
+            output_file_name: { type: "string", description: "Output file name to read objective from (defaults to app_ref.stat)" },
             custom_set_objective: { type: "boolean", description: "Use custom set_objective function" },
             set_objective_code: { type: "string", description: "Custom set_objective_value() function code" },
           },

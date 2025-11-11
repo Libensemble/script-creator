@@ -136,9 +136,10 @@ function renderCustomGenSpecs(data, mustacheRenderer) {
 }
 
 function getDefaultSetObjectiveCode(data) {
+  const outputFileName = data.output_file_name || `${data.app_ref || ''}.stat`;
   return `def set_objective_value():
     try:
-        data = np.loadtxt("${data.app_ref || ''}.stat", ndmin=1)
+        data = np.loadtxt("${outputFileName}", ndmin=1)
         return data[-1]
     except Exception:
         return np.nan`;
