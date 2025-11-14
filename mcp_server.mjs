@@ -30,6 +30,30 @@ const server = new Server(
 
 // List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Load generators.json to build enum constraints
+  let generators = {};
+  let genModuleEnum = [];
+  let genFunctionEnum = [];
+  
+  try {
+    const generatorsPath = path.join(__dirname, 'data/generators.json');
+    generators = JSON.parse(readFileSync(generatorsPath, 'utf8'));
+    
+    // Build enum arrays from generators.json
+    genModuleEnum = Object.keys(generators);
+    genFunctionEnum = [];
+    for (const module in generators) {
+      if (Array.isArray(generators[module].generators)) {
+        genFunctionEnum.push(...generators[module].generators);
+      }
+    }
+    // Remove duplicates
+    genFunctionEnum = [...new Set(genFunctionEnum)];
+  } catch (e) {
+    // If file doesn't exist, this is a critical error - the tool cannot function without it
+    throw new Error(`Failed to load generators.json: ${e.message}`);
+  }
+  
   return {
     tools: [
       {
@@ -50,13 +74,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             template_vars: { type: "array", description: "Template variable names", items: { type: "string" } },
             cluster_enable: { type: "boolean", description: "Enable cluster mode" },
             cluster_total_nodes: { type: "string", description: "Total nodes for cluster" },
-            scheduler_type: { type: "string", description: "Scheduler type (slurm or pbs)" },
-            gen_module: { type: "string", description: "Generator module" },
-            gen_function: { type: "string", description: "Generator function" },
+            scheduler_type: { type: "string", enum: ["slurm", "pbs"], description: "Scheduler type (slurm or pbs)" },
+            gen_module: { 
+              type: "string", 
+              enum: genModuleEnum,
+              description: `Generator module. Valid options: ${genModuleEnum.join(", ")}`
+            },
+            gen_function: { 
+              type: "string", 
+              enum: genFunctionEnum,
+              description: `Generator function. Valid options: ${genFunctionEnum.join(", ")}`
+            },
             nodes: { type: "string", description: "Number of nodes" },
             procs: { type: "string", description: "Number of processes" },
             gpus: { type: "string", description: "Number of GPUs" },
-            input_usage: { type: "string", description: "Input usage: directory or cmdline" },
+            input_usage: { type: "string", enum: ["directory", "cmdline"], description: "Input usage: directory or cmdline" },
             output_file_name: { type: "string", description: "Output file name to read objective from (defaults to app_ref.stat)" },
             custom_set_objective: { type: "boolean", description: "Use custom set_objective function" },
             set_objective_code: { type: "string", description: "Custom set_objective_value() function code" },
