@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 LangChain agent for MCP script-creator tool
-Requirements: pip install langchain-openai mcp
+Requirements: pip installlangchain langchain-openai mcp openai
+
+Runs the script generator MCP tool.
+Performs a second pass to tweak the script.
 """
 
 import os
@@ -15,8 +18,6 @@ from langchain_core.tools import StructuredTool
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-# Current this just runs the MCP tool iteration.
-# To do - add a pass to add any user defined bounds and other details.
 
 # Default prompt if none provided
 DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
@@ -24,7 +25,17 @@ DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - Input: /home/shudson/test_mcp/script-creator/six_hump_camel/input.txt
 - Template vars: X0, X1
 - 4 workers, 100 sims.
-- The output file for each simulation is output.txt"""
+- The output file for each simulation is output.txt
+- The bounds should be 0,1 and -1,2 for X0 and X1 respectively"""
+
+# Template for second-pass refinement
+REFINE_PROMPT_TEMPLATE = """Here are the generated scripts:
+
+{scripts_text}
+
+Please modify the scripts based on the original request: {user_prompt}
+Specifically, ensure parameter bounds are correctly set if specified in the request.
+Return the complete modified scripts in the same format (=== filename === followed by content)."""
 
 # Global MCP session
 mcp_session = None
@@ -69,25 +80,41 @@ async def main():
                 "messages": [("user", user_prompt)]
             })
             
-            # Find the tool result and save scripts
+            # Find the tool result (MCP-generated scripts)
+            scripts_text = None
             for msg in result["messages"]:
                 if hasattr(msg, "type") and msg.type == "tool":
                     scripts_text = msg.content
-                    
-                    # Default output directory
-                    output_dir = Path("generated_scripts")
-                    output_dir.mkdir(exist_ok=True)
-                    
-                    # Parse and save each script file
-                    pattern = r"=== (.+?) ===\n(.*?)(?=\n===|$)"
-                    matches = re.findall(pattern, scripts_text, re.DOTALL)
-                    
-                    for filename, content in matches:
-                        filepath = output_dir / filename.strip()
-                        filepath.write_text(content.strip() + "\n")
-                        print(f"Saved: {filepath}")
-                    
                     break
+            
+            if not scripts_text:
+                print("No scripts generated")
+                return
+            
+            # Second pass: Have AI refine the scripts (fix bounds, etc.)
+            refine_prompt = REFINE_PROMPT_TEMPLATE.format(
+                scripts_text=scripts_text,
+                user_prompt=user_prompt
+            )
+            
+            refine_result = await agent.ainvoke({
+                "messages": [("user", refine_prompt)]
+            })
+            
+            # Get the refined scripts from AI response
+            final_scripts = refine_result["messages"][-1].content
+            
+            # Save scripts
+            output_dir = Path("generated_scripts")
+            output_dir.mkdir(exist_ok=True)
+            
+            pattern = r"=== (.+?) ===\n(.*?)(?=\n===|$)"
+            matches = re.findall(pattern, final_scripts, re.DOTALL)
+            
+            for filename, content in matches:
+                filepath = output_dir / filename.strip()
+                filepath.write_text(content.strip() + "\n")
+                print(f"Saved: {filepath}")
 
 if __name__ == "__main__":
     asyncio.run(main())
