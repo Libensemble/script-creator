@@ -13,6 +13,8 @@ import sys
 import asyncio
 import re
 import subprocess
+import argparse
+import shutil
 from pathlib import Path
 from datetime import datetime
 from langchain_openai import ChatOpenAI
@@ -128,6 +130,21 @@ def save_scripts(scripts_text, output_dir, archive_name=None):
             archive_path = archive_dir / filename.strip()
             archive_path.write_text(content.strip() + "\n")
 
+def copy_existing_scripts(scripts_dir, output_dir):
+    """Copy scripts from existing directory and return as formatted text"""
+    print(f"Using existing scripts from: {scripts_dir}")
+    scripts_dir = Path(scripts_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    scripts_text = ""
+    for script_file in scripts_dir.glob("*.py"):
+        shutil.copy(script_file, output_dir)
+        print(f"Copied: {script_file.name}")
+        scripts_text += f"=== {script_file.name} ===\n{script_file.read_text()}\n\n"
+    
+    return scripts_text
+
 def run_generated_scripts(output_dir):
     """Stage 3: Run the generated scripts"""
     print("\nRunning scripts...")
@@ -193,6 +210,21 @@ DO NOT wrap in markdown or add explanations."""
 async def main():
     global mcp_session
     
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Generate and run libEnsemble scripts")
+    parser.add_argument("--scripts", help="Use existing scripts from directory (skip generation)")
+    parser.add_argument("--prompt", help="Prompt for script generation (default: use DEFAULT_PROMPT)")
+    args = parser.parse_args()
+    
+    output_dir = "generated_scripts"
+    
+    # Copy existing scripts if provided
+    if args.scripts:
+        current_scripts = copy_existing_scripts(args.scripts, output_dir)
+        skip_generation = True
+    else:
+        skip_generation = False
+    
     # Connect to MCP server
     server_params = StdioServerParameters(command="node", args=["mcp_server.mjs"])
     
@@ -217,25 +249,28 @@ async def main():
             llm = ChatOpenAI(model="gpt-4o", temperature=0)
             agent = create_agent(llm, [lc_tool])
             
-            # Get user prompt from command line or use default
-            user_prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PROMPT
-            
             # Stage 1: Run MCP generator
-            scripts_text = await run_mcp_generator(agent, user_prompt)
-            if not scripts_text:
-                print("No scripts generated")
-                return
-            
-            output_dir = "generated_scripts"
-            
-            # Archive initial MCP output
-            save_scripts(scripts_text, output_dir, archive_name="1_mcp_output")
+            if not skip_generation:
+                user_prompt = args.prompt or DEFAULT_PROMPT
+                scripts_text = await run_mcp_generator(agent, user_prompt)
+                if not scripts_text:
+                    print("No scripts generated")
+                    return
+                
+                # Archive initial MCP output
+                save_scripts(scripts_text, output_dir, archive_name="1_mcp_output")
+            else:
+                scripts_text = current_scripts
             
             # Stage 2: Update scripts
-            final_scripts = await update_scripts(agent, scripts_text, user_prompt)
-            
-            # Save and archive updated scripts
-            save_scripts(final_scripts, output_dir, archive_name="2_after_update")
+            if not skip_generation:
+                user_prompt = args.prompt or DEFAULT_PROMPT
+                final_scripts = await update_scripts(agent, scripts_text, user_prompt)
+                
+                # Save and archive updated scripts
+                save_scripts(final_scripts, output_dir, archive_name="2_after_update")
+            else:
+                final_scripts = current_scripts
             
             # Stage 3: Run scripts with retry loop
             current_scripts = final_scripts
@@ -247,7 +282,6 @@ async def main():
                 
                 if attempt < MAX_RETRIES:
                     print(f"\nRetry attempt {attempt + 1}/{MAX_RETRIES}")
-                    # Fix scripts based on error
                     current_scripts = await fix_scripts(agent, current_scripts, error_msg)
                     save_scripts(current_scripts, output_dir, archive_name=f"3_fix_attempt_{attempt + 1}")
                 else:
