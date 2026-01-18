@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LangChain agent for MCP script-creator tool
+LangChain agent for MCP script-creator and runner
 Requirements: pip install langchain langchain-openai mcp openai
 
 1. Runs the script generator MCP tool.
@@ -73,12 +73,13 @@ FIX_PROMPT_TEMPLATE = """These scripts failed with the following error:
 
 {error_msg}
 
-Here are the current scripts:
+Here are the current scripts (main run script is {run_script_name}):
 
 {scripts_text}
 
 Fix the scripts to resolve this error.
 Return ALL scripts in the EXACT SAME FORMAT (=== filename === followed by raw Python code).
+DO NOT merge or consolidate files - keep the same file structure.
 DO NOT wrap in markdown or add explanations."""
 
 # Global MCP session
@@ -190,6 +191,14 @@ def archive_run_outputs(output_dir, archive_name, error_msg=""):
         for filepath in output_dir.glob(pattern):
             shutil.move(str(filepath), str(run_output_dir / filepath.name))
 
+def detect_run_script(directory):
+    """Find the run script in directory (first run_*.py file)"""
+    directory = Path(directory)
+    run_scripts = list(directory.glob("run_*.py"))
+    if not run_scripts:
+        return None
+    return run_scripts[0].name
+
 def copy_existing_scripts(scripts_dir, output_dir):
     """Copy scripts from existing directory and return as formatted text"""
     print(f"Using existing scripts from: {scripts_dir}")
@@ -205,20 +214,22 @@ def copy_existing_scripts(scripts_dir, output_dir):
     
     return scripts_text
 
-def run_generated_scripts(output_dir):
+def run_generated_scripts(output_dir, run_script_name):
     """Stage 3: Run the generated scripts"""
     print("\nRunning scripts...")
     
     output_dir = Path(output_dir)
-    run_script = output_dir / "run_libe.py"
+    run_script = output_dir / run_script_name
     
     if not run_script.exists():
-        print("Error: run_libe.py not found")
-        return False, "run_libe.py not found"
+        print(f"Error: {run_script_name} not found")
+        return False, f"{run_script_name} not found"
+    
+    print(f"Using run script: {run_script_name}")
     
     # Run the script and capture output
     result = subprocess.run(
-        ["python", "run_libe.py"],
+        ["python", run_script_name],
         cwd=output_dir,
         capture_output=True,
         text=True,
@@ -236,11 +247,15 @@ def run_generated_scripts(output_dir):
             print(f"Error output:\n{result.stderr[:500]}")
         return False, error_msg
 
-async def fix_scripts(agent, scripts_text, error_msg):
+async def fix_scripts(agent, scripts_text, error_msg, run_script_name):
     """Fix scripts based on error message"""
     print("Attempting to fix scripts based on error...")
     
-    fix_prompt = FIX_PROMPT_TEMPLATE.format(error_msg=error_msg, scripts_text=scripts_text)
+    fix_prompt = FIX_PROMPT_TEMPLATE.format(
+        error_msg=error_msg, 
+        scripts_text=scripts_text,
+        run_script_name=run_script_name
+    )
     
     print_prompt("Fix Scripts", fix_prompt)
     
@@ -288,8 +303,13 @@ async def main():
     if args.scripts:
         current_scripts = copy_existing_scripts(args.scripts, output_dir)
         skip_generation = True
+        run_script_name = detect_run_script(output_dir)
+        if not run_script_name:
+            print("Error: No run_*.py script found in directory")
+            return
     else:
         skip_generation = False
+        run_script_name = "run_libe.py"  # MCP always generates this name
     
     # Connect to MCP server
     server_params = StdioServerParameters(command="node", args=["mcp_server.mjs"])
@@ -344,7 +364,7 @@ async def main():
             
             # Stage 3: Run scripts with retry loop
             for attempt in range(MAX_RETRIES + 1):
-                success, error_msg = run_generated_scripts(output_dir)
+                success, error_msg = run_generated_scripts(output_dir, run_script_name)
                 
                 if success:
                     break
@@ -355,7 +375,7 @@ async def main():
                 if attempt < MAX_RETRIES:
                     print(f"\nRetry attempt {attempt + 1}/{MAX_RETRIES}")
                     # Fix the scripts
-                    current_scripts = await fix_scripts(agent, current_scripts, error_msg)
+                    current_scripts = await fix_scripts(agent, current_scripts, error_msg, run_script_name)
                     current_archive = f"{archive_counter}_fix_attempt_{attempt + 1}"
                     save_scripts(current_scripts, output_dir, archive_name=current_archive)
                     archive_counter += 1
