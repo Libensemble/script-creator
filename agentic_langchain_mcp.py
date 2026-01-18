@@ -266,8 +266,17 @@ async def main():
     parser = argparse.ArgumentParser(description="Generate and run libEnsemble scripts")
     parser.add_argument("--scripts", help="Use existing scripts from directory (skip generation)")
     parser.add_argument("--prompt", help="Prompt for script generation (default: use DEFAULT_PROMPT)")
+    parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
     args = parser.parse_args()
+    
+    # Get prompt from file if specified, otherwise use --prompt or default
+    if args.prompt_file:
+        user_prompt = Path(args.prompt_file).read_text()
+    elif args.prompt:
+        user_prompt = args.prompt
+    else:
+        user_prompt = DEFAULT_PROMPT
     
     global SHOW_PROMPTS
     SHOW_PROMPTS = args.show_prompts
@@ -308,7 +317,6 @@ async def main():
             
             # Stage 1: Run MCP generator
             if not skip_generation:
-                user_prompt = args.prompt or DEFAULT_PROMPT
                 scripts_text = await run_mcp_generator(agent, user_prompt)
                 if not scripts_text:
                     print("No scripts generated")
@@ -322,7 +330,6 @@ async def main():
             
             # Stage 2: Update scripts
             if not skip_generation:
-                user_prompt = args.prompt or DEFAULT_PROMPT
                 current_scripts = await update_scripts(agent, scripts_text, user_prompt)
                 
                 # Save and archive updated scripts
