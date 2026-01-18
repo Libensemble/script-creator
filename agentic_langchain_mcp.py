@@ -53,6 +53,19 @@ CRITICAL OUTPUT REQUIREMENTS:
 - Do NOT wrap in markdown
 - The output must be EXACTLY like the input format - parseable code only"""
 
+# Template for fixing failed scripts
+FIX_PROMPT_TEMPLATE = """These scripts failed with the following error:
+
+{error_msg}
+
+Here are the current scripts:
+
+{scripts_text}
+
+Fix the scripts to resolve this error.
+Return ALL scripts in the EXACT SAME FORMAT (=== filename === followed by raw Python code).
+DO NOT wrap in markdown or add explanations."""
+
 # Global MCP session
 mcp_session = None
 
@@ -200,17 +213,7 @@ async def fix_scripts(agent, scripts_text, error_msg):
     """Fix scripts based on error message"""
     print("Attempting to fix scripts based on error...")
     
-    fix_prompt = f"""These scripts failed with the following error:
-
-{error_msg}
-
-Here are the current scripts:
-
-{scripts_text}
-
-Fix the scripts to resolve this error.
-Return ALL scripts in the EXACT SAME FORMAT (=== filename === followed by raw Python code).
-DO NOT wrap in markdown or add explanations."""
+    fix_prompt = FIX_PROMPT_TEMPLATE.format(error_msg=error_msg, scripts_text=scripts_text)
     
     fix_result = await agent.ainvoke({
         "messages": [("user", fix_prompt)]
