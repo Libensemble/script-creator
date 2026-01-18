@@ -219,6 +219,7 @@ async def main():
     output_dir = "generated_scripts"
     
     # Copy existing scripts if provided
+    archive_counter = 1
     if args.scripts:
         current_scripts = copy_existing_scripts(args.scripts, output_dir)
         skip_generation = True
@@ -258,7 +259,8 @@ async def main():
                     return
                 
                 # Archive initial MCP output
-                save_scripts(scripts_text, output_dir, archive_name="1_mcp_output")
+                save_scripts(scripts_text, output_dir, archive_name=f"{archive_counter}_mcp_output")
+                archive_counter += 1
             else:
                 scripts_text = current_scripts
             
@@ -268,7 +270,12 @@ async def main():
                 current_scripts = await update_scripts(agent, scripts_text, user_prompt)
                 
                 # Save and archive updated scripts
-                save_scripts(current_scripts, output_dir, archive_name="2_after_update")
+                save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_after_update")
+                archive_counter += 1
+            else:
+                # Save and archive copied scripts before retry loop
+                save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_copied_scripts")
+                archive_counter += 1
             
             # Stage 3: Run scripts with retry loop
             for attempt in range(MAX_RETRIES + 1):
@@ -280,7 +287,8 @@ async def main():
                 if attempt < MAX_RETRIES:
                     print(f"\nRetry attempt {attempt + 1}/{MAX_RETRIES}")
                     current_scripts = await fix_scripts(agent, current_scripts, error_msg)
-                    save_scripts(current_scripts, output_dir, archive_name=f"3_fix_attempt_{attempt + 1}")
+                    save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_fix_attempt_{attempt + 1}")
+                    archive_counter += 1
                 else:
                     print(f"\nFailed after {MAX_RETRIES} retry attempts")
 
