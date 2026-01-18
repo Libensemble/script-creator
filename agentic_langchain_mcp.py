@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
 LangChain agent for MCP script-creator tool
-Requirements: pip installlangchain langchain-openai mcp openai
+Requirements: pip install langchain langchain-openai mcp openai
 
-Runs the script generator MCP tool.
-Performs a second pass to tweak the script.
-Runs the scripts and reports if successful.
-If scripts fail, the agent will attempt to fix and rerun for MAX_RETRIES.
+1. Runs the script generator MCP tool.
+2. Performs a second pass to tweak the script.
+3. Runs the scripts and reports if successful.
+4. If scripts fail, the agent will attempt to fix and rerun for MAX_RETRIES.
+
+Step 1 and 2 are skipped if --scripts is provided.
 
 Provenance:
 - Generated scripts are saved at each step
 - Output of failed runs are saved
+
+For options: python agentic_langchain_mcp.py -h
 """
 
 import os
