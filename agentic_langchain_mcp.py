@@ -130,6 +130,26 @@ def save_scripts(scripts_text, output_dir, archive_name=None):
             archive_path = archive_dir / filename.strip()
             archive_path.write_text(content.strip() + "\n")
 
+def archive_run_outputs(output_dir, archive_name, error_msg=""):
+    """Move run outputs to run_output/ subdirectory under the archive"""
+    output_dir = Path(output_dir)
+    run_output_dir = output_dir / "versions" / archive_name / "run_output"
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save error output
+    if error_msg:
+        (run_output_dir / "error.txt").write_text(error_msg)
+    
+    # Move ensemble directory
+    ensemble_dir = output_dir / "ensemble"
+    if ensemble_dir.exists():
+        shutil.move(str(ensemble_dir), str(run_output_dir / "ensemble"))
+    
+    # Move log and stats files
+    for pattern in ["ensemble.log", "libE_stats.txt", "*.npy", "*.pickle"]:
+        for filepath in output_dir.glob(pattern):
+            shutil.move(str(filepath), str(run_output_dir / filepath.name))
+
 def copy_existing_scripts(scripts_dir, output_dir):
     """Copy scripts from existing directory and return as formatted text"""
     print(f"Using existing scripts from: {scripts_dir}")
@@ -270,11 +290,13 @@ async def main():
                 current_scripts = await update_scripts(agent, scripts_text, user_prompt)
                 
                 # Save and archive updated scripts
-                save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_after_update")
+                current_archive = f"{archive_counter}_after_update"
+                save_scripts(current_scripts, output_dir, archive_name=current_archive)
                 archive_counter += 1
             else:
                 # Save and archive copied scripts before retry loop
-                save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_copied_scripts")
+                current_archive = f"{archive_counter}_copied_scripts"
+                save_scripts(current_scripts, output_dir, archive_name=current_archive)
                 archive_counter += 1
             
             # Stage 3: Run scripts with retry loop
@@ -284,10 +306,15 @@ async def main():
                 if success:
                     break
                 
+                # Archive the failed run outputs to current archive's run_output/
+                archive_run_outputs(output_dir, current_archive, error_msg)
+                
                 if attempt < MAX_RETRIES:
                     print(f"\nRetry attempt {attempt + 1}/{MAX_RETRIES}")
+                    # Fix the scripts
                     current_scripts = await fix_scripts(agent, current_scripts, error_msg)
-                    save_scripts(current_scripts, output_dir, archive_name=f"{archive_counter}_fix_attempt_{attempt + 1}")
+                    current_archive = f"{archive_counter}_fix_attempt_{attempt + 1}"
+                    save_scripts(current_scripts, output_dir, archive_name=current_archive)
                     archive_counter += 1
                 else:
                     print(f"\nFailed after {MAX_RETRIES} retry attempts")
