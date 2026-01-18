@@ -6,6 +6,11 @@ Requirements: pip installlangchain langchain-openai mcp openai
 Runs the script generator MCP tool.
 Performs a second pass to tweak the script.
 Runs the scripts and reports if successful.
+If scripts fail, the agent will attempt to fix and rerun for MAX_RETRIES.
+
+Provenance:
+- Generated scripts are saved at each step
+- Output of failed runs are saved
 """
 
 import os
