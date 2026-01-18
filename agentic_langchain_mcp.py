@@ -55,6 +55,91 @@ async def call_mcp_tool(**kwargs):
     result = await mcp_session.call_tool("CreateLibEnsembleScripts", kwargs)
     return result.content[0].text if result.content else "Scripts created"
 
+async def run_mcp_generator(agent, user_prompt):
+    """Stage 1: Run the MCP script generator"""
+    print("Running MCP script generator...")
+    
+    result = await agent.ainvoke({
+        "messages": [("user", user_prompt)]
+    })
+    
+    # Find the tool result (MCP-generated scripts)
+    for msg in result["messages"]:
+        if hasattr(msg, "type") and msg.type == "tool":
+            return msg.content
+    
+    return None
+
+async def update_scripts(agent, scripts_text, user_prompt):
+    """Stage 2: Update scripts based on user requirements"""
+    print("Updating scripts...")
+    
+    refine_prompt = REFINE_PROMPT_TEMPLATE.format(
+        scripts_text=scripts_text,
+        user_prompt=user_prompt
+    )
+    
+    refine_result = await agent.ainvoke({
+        "messages": [("user", refine_prompt)]
+    })
+    
+    # Get the refined scripts from AI response
+    final_scripts = refine_result["messages"][-1].content
+    
+    # Strip markdown code fences if present
+    final_scripts = re.sub(r'```python\n', '', final_scripts)
+    final_scripts = re.sub(r'```\n?', '', final_scripts)
+    
+    # Strip any explanatory text before/after the scripts
+    if '===' in final_scripts:
+        start = final_scripts.find('===')
+        final_scripts = final_scripts[start:]
+    
+    return final_scripts
+
+def save_scripts(scripts_text, output_dir):
+    """Save generated scripts to files"""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True)
+    
+    pattern = r"=== (.+?) ===\n(.*?)(?=\n===|$)"
+    matches = re.findall(pattern, scripts_text, re.DOTALL)
+    
+    for filename, content in matches:
+        filepath = output_dir / filename.strip()
+        filepath.write_text(content.strip() + "\n")
+        print(f"Saved: {filepath}")
+
+def run_generated_scripts(output_dir):
+    """Stage 3: Run the generated scripts"""
+    print("\nRunning scripts...")
+    
+    output_dir = Path(output_dir)
+    run_script = output_dir / "run_libe.py"
+    
+    if not run_script.exists():
+        print("Error: run_libe.py not found")
+        return False
+    
+    # Run the script and capture output
+    result = subprocess.run(
+        ["python", "run_libe.py"],
+        cwd=output_dir,
+        capture_output=True,
+        text=True,
+        timeout=300  # 5 minute timeout
+    )
+    
+    # Check if successful
+    if result.returncode == 0:
+        print("✓ Scripts ran successfully")
+        return True
+    else:
+        print(f"✗ Scripts failed with return code {result.returncode}")
+        if result.stderr:
+            print(f"Error output:\n{result.stderr[:500]}")
+        return False
+
 async def main():
     global mcp_session
     
@@ -85,81 +170,21 @@ async def main():
             # Get user prompt from command line or use default
             user_prompt = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PROMPT
             
-            # Run
-            result = await agent.ainvoke({
-                "messages": [("user", user_prompt)]
-            })
-            
-            # Find the tool result (MCP-generated scripts)
-            scripts_text = None
-            for msg in result["messages"]:
-                if hasattr(msg, "type") and msg.type == "tool":
-                    scripts_text = msg.content
-                    break
-            
+            # Stage 1: Run MCP generator
+            scripts_text = await run_mcp_generator(agent, user_prompt)
             if not scripts_text:
                 print("No scripts generated")
                 return
             
-            # Second pass: Have AI refine the scripts (fix bounds, etc.)
-            refine_prompt = REFINE_PROMPT_TEMPLATE.format(
-                scripts_text=scripts_text,
-                user_prompt=user_prompt
-            )
-            
-            refine_result = await agent.ainvoke({
-                "messages": [("user", refine_prompt)]
-            })
-            
-            # Get the refined scripts from AI response
-            final_scripts = refine_result["messages"][-1].content
-            
-            # Strip markdown code fences if present
-            final_scripts = re.sub(r'```python\n', '', final_scripts)
-            final_scripts = re.sub(r'```\n?', '', final_scripts)
-            
-            # Strip any explanatory text before/after the scripts
-            # Keep only from first === to end
-            if '===' in final_scripts:
-                start = final_scripts.find('===')
-                final_scripts = final_scripts[start:]
+            # Stage 2: Update scripts
+            final_scripts = await update_scripts(agent, scripts_text, user_prompt)
             
             # Save scripts
-            output_dir = Path("generated_scripts")
-            output_dir.mkdir(exist_ok=True)
+            output_dir = "generated_scripts"
+            save_scripts(final_scripts, output_dir)
             
-            pattern = r"=== (.+?) ===\n(.*?)(?=\n===|$)"
-            matches = re.findall(pattern, final_scripts, re.DOTALL)
-            
-            for filename, content in matches:
-                filepath = output_dir / filename.strip()
-                filepath.write_text(content.strip() + "\n")
-                print(f"Saved: {filepath}")
-            
-            # Third step: Run the scripts
-            print("\nRunning scripts...")
-            run_script = output_dir / "run_libe.py"
-            
-            if not run_script.exists():
-                print("Error: run_libe.py not found")
-                return
-            
-            # Run the script and capture output
-            result = subprocess.run(
-                ["python", "run_libe.py"],
-                cwd=output_dir,
-                capture_output=True,
-                text=True,
-                timeout=300  # 5 minute timeout
-            )
-            
-            # Check if successful
-            if result.returncode == 0:
-                print("✓ Scripts ran successfully")
-            else:
-                print(f"✗ Scripts failed with return code {result.returncode}")
-                if result.stderr:
-                    print(f"Error output:\n{result.stderr[:500]}")  # First 500 chars
+            # Stage 3: Run scripts
+            run_generated_scripts(output_dir)
 
 if __name__ == "__main__":
     asyncio.run(main())
