@@ -14,12 +14,16 @@ import asyncio
 import re
 import subprocess
 from pathlib import Path
+from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+
+# Maximum retry attempts for fixing failed scripts
+MAX_RETRIES = 1
 
 # Default prompt if none provided
 DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
@@ -52,6 +56,12 @@ mcp_session = None
 
 async def call_mcp_tool(**kwargs):
     """Wrapper to call the MCP tool"""
+    # Block custom_set_objective - AI always gets it wrong
+    if 'custom_set_objective' in kwargs:
+        del kwargs['custom_set_objective']
+    if 'set_objective_code' in kwargs:
+        del kwargs['set_objective_code']
+    
     result = await mcp_session.call_tool("CreateLibEnsembleScripts", kwargs)
     return result.content[0].text if result.content else "Scripts created"
 
@@ -72,7 +82,7 @@ async def run_mcp_generator(agent, user_prompt):
 
 async def update_scripts(agent, scripts_text, user_prompt):
     """Stage 2: Update scripts based on user requirements"""
-    print("Updating scripts...")
+    print("Updating script details...")
     
     refine_prompt = REFINE_PROMPT_TEMPLATE.format(
         scripts_text=scripts_text,
@@ -97,8 +107,8 @@ async def update_scripts(agent, scripts_text, user_prompt):
     
     return final_scripts
 
-def save_scripts(scripts_text, output_dir):
-    """Save generated scripts to files"""
+def save_scripts(scripts_text, output_dir, archive_name=None):
+    """Save generated scripts to files and optionally archive"""
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
     
@@ -109,6 +119,14 @@ def save_scripts(scripts_text, output_dir):
         filepath = output_dir / filename.strip()
         filepath.write_text(content.strip() + "\n")
         print(f"Saved: {filepath}")
+    
+    # Archive this version if requested
+    if archive_name:
+        archive_dir = output_dir / "versions" / archive_name
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        for filename, content in matches:
+            archive_path = archive_dir / filename.strip()
+            archive_path.write_text(content.strip() + "\n")
 
 def run_generated_scripts(output_dir):
     """Stage 3: Run the generated scripts"""
@@ -119,7 +137,7 @@ def run_generated_scripts(output_dir):
     
     if not run_script.exists():
         print("Error: run_libe.py not found")
-        return False
+        return False, "run_libe.py not found"
     
     # Run the script and capture output
     result = subprocess.run(
@@ -133,12 +151,44 @@ def run_generated_scripts(output_dir):
     # Check if successful
     if result.returncode == 0:
         print("✓ Scripts ran successfully")
-        return True
+        return True, None
     else:
+        error_msg = f"Return code {result.returncode}\nStderr: {result.stderr}\nStdout: {result.stdout}"
         print(f"✗ Scripts failed with return code {result.returncode}")
         if result.stderr:
             print(f"Error output:\n{result.stderr[:500]}")
-        return False
+        return False, error_msg
+
+async def fix_scripts(agent, scripts_text, error_msg):
+    """Fix scripts based on error message"""
+    print("Attempting to fix scripts based on error...")
+    
+    fix_prompt = f"""These scripts failed with the following error:
+
+{error_msg}
+
+Here are the current scripts:
+
+{scripts_text}
+
+Fix the scripts to resolve this error.
+Return ALL scripts in the EXACT SAME FORMAT (=== filename === followed by raw Python code).
+DO NOT wrap in markdown or add explanations."""
+    
+    fix_result = await agent.ainvoke({
+        "messages": [("user", fix_prompt)]
+    })
+    
+    fixed_scripts = fix_result["messages"][-1].content
+    
+    # Clean up
+    fixed_scripts = re.sub(r'```python\n', '', fixed_scripts)
+    fixed_scripts = re.sub(r'```\n?', '', fixed_scripts)
+    if '===' in fixed_scripts:
+        start = fixed_scripts.find('===')
+        fixed_scripts = fixed_scripts[start:]
+    
+    return fixed_scripts
 
 async def main():
     global mcp_session
@@ -176,15 +226,32 @@ async def main():
                 print("No scripts generated")
                 return
             
+            output_dir = "generated_scripts"
+            
+            # Archive initial MCP output
+            save_scripts(scripts_text, output_dir, archive_name="1_mcp_output")
+            
             # Stage 2: Update scripts
             final_scripts = await update_scripts(agent, scripts_text, user_prompt)
             
-            # Save scripts
-            output_dir = "generated_scripts"
-            save_scripts(final_scripts, output_dir)
+            # Save and archive updated scripts
+            save_scripts(final_scripts, output_dir, archive_name="2_after_update")
             
-            # Stage 3: Run scripts
-            run_generated_scripts(output_dir)
+            # Stage 3: Run scripts with retry loop
+            current_scripts = final_scripts
+            for attempt in range(MAX_RETRIES + 1):
+                success, error_msg = run_generated_scripts(output_dir)
+                
+                if success:
+                    break
+                
+                if attempt < MAX_RETRIES:
+                    print(f"\nRetry attempt {attempt + 1}/{MAX_RETRIES}")
+                    # Fix scripts based on error
+                    current_scripts = await fix_scripts(agent, current_scripts, error_msg)
+                    save_scripts(current_scripts, output_dir, archive_name=f"3_fix_attempt_{attempt + 1}")
+                else:
+                    print(f"\nFailed after {MAX_RETRIES} retry attempts")
 
 if __name__ == "__main__":
     asyncio.run(main())
