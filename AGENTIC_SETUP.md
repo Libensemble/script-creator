@@ -37,6 +37,9 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 Add to `~/.bashrc` or `~/.zshrc` to persist.
 
+Make sure to check MODEL at top of agentic script and usage rates
+for tokens (Check your spend at https://platform.openai.com/usage)
+
 ## Run
 
 ```bash

@@ -37,7 +37,7 @@ from mcp.client.stdio import stdio_client
 MAX_RETRIES = 1
 
 # OpenAI model to use
-MODEL = "gpt-4o"
+MODEL = "gpt-4o-mini"
 
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
