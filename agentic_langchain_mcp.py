@@ -36,6 +36,9 @@ from mcp.client.stdio import stdio_client
 # Maximum retry attempts for fixing failed scripts
 MAX_RETRIES = 1
 
+# OpenAI model to use
+MODEL = "gpt-4o"
+
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
 
@@ -300,7 +303,7 @@ async def main():
             )
             
             # Create LangChain agent
-            llm = ChatOpenAI(model="gpt-4o", temperature=0)
+            llm = ChatOpenAI(model=MODEL, temperature=0)
             agent = create_agent(llm, [lc_tool])
             
             # Stage 1: Run MCP generator
