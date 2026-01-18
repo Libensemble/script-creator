@@ -265,15 +265,12 @@ async def main():
             # Stage 2: Update scripts
             if not skip_generation:
                 user_prompt = args.prompt or DEFAULT_PROMPT
-                final_scripts = await update_scripts(agent, scripts_text, user_prompt)
+                current_scripts = await update_scripts(agent, scripts_text, user_prompt)
                 
                 # Save and archive updated scripts
-                save_scripts(final_scripts, output_dir, archive_name="2_after_update")
-            else:
-                final_scripts = current_scripts
+                save_scripts(current_scripts, output_dir, archive_name="2_after_update")
             
             # Stage 3: Run scripts with retry loop
-            current_scripts = final_scripts
             for attempt in range(MAX_RETRIES + 1):
                 success, error_msg = run_generated_scripts(output_dir)
                 
