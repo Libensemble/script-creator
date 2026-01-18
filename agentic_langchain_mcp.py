@@ -32,6 +32,9 @@ from mcp.client.stdio import stdio_client
 # Maximum retry attempts for fixing failed scripts
 MAX_RETRIES = 1
 
+# Show prompts flag (set by command line)
+SHOW_PROMPTS = False
+
 # Default prompt if none provided
 DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - Executable: /home/shudson/test_mcp/script-creator/six_hump_camel/six_hump_camel.x
@@ -74,6 +77,14 @@ DO NOT wrap in markdown or add explanations."""
 # Global MCP session
 mcp_session = None
 
+def print_prompt(stage_name, prompt_text):
+    """Print a prompt with formatting if SHOW_PROMPTS is enabled"""
+    slen = 15
+    if SHOW_PROMPTS:
+        print(f"\n{'='*slen} PROMPT TO AI ({stage_name}) {'='*slen}")
+        print(prompt_text)
+        print(f"{'='*slen} END AI PROMPT ({stage_name}) {'='*slen}\n")
+
 async def call_mcp_tool(**kwargs):
     """Wrapper to call the MCP tool"""
     # Block custom_set_objective - AI always gets it wrong
@@ -88,6 +99,8 @@ async def call_mcp_tool(**kwargs):
 async def run_mcp_generator(agent, user_prompt):
     """Stage 1: Run the MCP script generator"""
     print("Running MCP script generator...")
+    
+    print_prompt("MCP Generator", user_prompt)
     
     result = await agent.ainvoke({
         "messages": [("user", user_prompt)]
@@ -108,6 +121,8 @@ async def update_scripts(agent, scripts_text, user_prompt):
         scripts_text=scripts_text,
         user_prompt=user_prompt
     )
+    
+    print_prompt("Update Scripts", refine_prompt)
     
     refine_result = await agent.ainvoke({
         "messages": [("user", refine_prompt)]
@@ -220,6 +235,8 @@ async def fix_scripts(agent, scripts_text, error_msg):
     
     fix_prompt = FIX_PROMPT_TEMPLATE.format(error_msg=error_msg, scripts_text=scripts_text)
     
+    print_prompt("Fix Scripts", fix_prompt)
+    
     fix_result = await agent.ainvoke({
         "messages": [("user", fix_prompt)]
     })
@@ -242,7 +259,11 @@ async def main():
     parser = argparse.ArgumentParser(description="Generate and run libEnsemble scripts")
     parser.add_argument("--scripts", help="Use existing scripts from directory (skip generation)")
     parser.add_argument("--prompt", help="Prompt for script generation (default: use DEFAULT_PROMPT)")
+    parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
     args = parser.parse_args()
+    
+    global SHOW_PROMPTS
+    SHOW_PROMPTS = args.show_prompts
     
     output_dir = "generated_scripts"
     
