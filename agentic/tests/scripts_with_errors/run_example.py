@@ -13,7 +13,7 @@ from libensemble.specs import AllocSpecs, ExitCriteria, GenSpecs, LibeSpecs, Sim
 if __name__ == "__main__":
     exctr = MPIExecutor()
 
-    sim_app = "/home/shudson/test_mcp/script-creator/six_hump_camel/six_hump_camel.x"
+    sim_app = "/home/shudson/test_mcp/script-creator/agentic/tests/six_hump_camel/six_hump_camel.x"
 
     if not os.path.isfile(sim_app):
         sys.exit(f"Application not found: {sim_app}")
@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     num_workers = 4
 
-    input_file = "/home/shudson/test_mcp/script-creator/six_hump_camel/input.txt"
+    input_file = "/home/shudson/test_mcp/script-creator/agentic/tests/six_hump_camel/input.txt"
 
 
     libE_specs = LibeSpecs(
