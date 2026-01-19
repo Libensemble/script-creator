@@ -14,7 +14,7 @@ Provenance:
 - Generated scripts are saved at each step
 - Output of failed runs are saved
 
-For options: python agentic_langchain_mcp.py -h
+For options: python libe_agent_with_script_generator.py -h
 """
 
 import os
@@ -214,6 +214,24 @@ def copy_existing_scripts(scripts_dir, output_dir):
     
     return scripts_text
 
+def find_mcp_server(user_provided_path=None):
+    """Find mcp_server.mjs file.
+    Search order: 1) user provided path, 2) parent directory, 3) current directory"""
+    search_locations = (
+        [Path(user_provided_path)] if user_provided_path else
+        [Path(__file__).parent.parent / "mcp_server.mjs", Path.cwd() / "mcp_server.mjs"]
+    )
+    
+    for location in search_locations:
+        if location.exists():
+            return location
+    
+    print(f"Error: Cannot find mcp_server.mjs")
+    print(f"Searched: {', '.join(str(loc) for loc in search_locations)}")
+    print("Use --mcp-server to specify location")
+    sys.exit(1)
+
+
 def run_generated_scripts(output_dir, run_script_name):
     """Stage 3: Run the generated scripts"""
     print("\nRunning scripts...")
@@ -283,6 +301,7 @@ async def main():
     parser.add_argument("--prompt", help="Prompt for script generation (default: use DEFAULT_PROMPT)")
     parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
+    parser.add_argument("--mcp-server", help="Path to mcp_server.mjs file")
     args = parser.parse_args()
     
     # Get prompt from file if specified, otherwise use --prompt or default
@@ -312,7 +331,8 @@ async def main():
         run_script_name = "run_libe.py"  # MCP always generates this name
     
     # Connect to MCP server
-    server_params = StdioServerParameters(command="node", args=["mcp_server.mjs"])
+    mcp_server_path = find_mcp_server(args.mcp_server)
+    server_params = StdioServerParameters(command="node", args=[str(mcp_server_path)])
     
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
