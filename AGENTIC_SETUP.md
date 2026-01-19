@@ -1,4 +1,18 @@
-# Running libe_agent_basic.py
+# Running libEnsemble agent workflows
+
+For all workflows, you will need an OpenAPI key. 
+Requires an [OpenAI account](platform.openai.com).
+Make sure to check MODEL at top of agentic script and usage rates.
+
+Option to run with a local model will be added soon.
+
+Set user OpenAI API Key:
+
+```bash
+export OPENAI_API_KEY="sk-your-key-here"
+```
+
+## Running libe_agent_basic.py
 
 Agent for running libEnsemble scripts with error recovery.
 
@@ -14,13 +28,7 @@ Make sure to check MODEL at top of agentic script and usage rates.
 
 Option to run with a local model will be added soon.
 
-## Running
-
-Set user OpenAI API Key:
-
-```bash
-export OPENAI_API_KEY="sk-your-key-here"
-```
+### Running
 
 ```bash
 cd agentic/
@@ -34,7 +42,7 @@ gcc six_hump_camel.c -o six_hump_camel.x -lm
 cd ../..
 ```
 and update paths to `sim_app` and `input_file` in `tests/scripts_with_errors/run_example.py`.
-*Missing file paths are not yet corrected automatically*
+*Missing file paths are not yet corrected automatically*.
 
 To run:
 
@@ -45,7 +53,7 @@ to a working directory `generated_scripts/`.
 python libe_agent_basic.py --scripts tests/scripts_with_errors/
 ```
 
-# Running libe_agent_with_script_generator.py
+## Running libe_agent_with_script_generator.py
 
 Agent for libEnsemble scripts with error recovery, including optional use of
 the script generator MCP tool.
@@ -70,7 +78,14 @@ Install Node.js dependencies:
 ```bash
 npm install
 ```
-## Running
+
+Requires this repository to be cloned to access the MCP tool. The file
+`mcp_server.mjs` should not be moved from it's original location. This
+file will be found if you run in the same directory or one below. To run
+the script elsewhere, use the `--mcp-server` command line option to point
+to this file.
+
+### Running
 
 ```bash
 
@@ -88,7 +103,6 @@ python libe_agent_with_script_generator.py --prompt-file my_prompt.txt
 # Use existing scripts (skip MCP generation/tweaking)
 python libe_agent_with_script_generator.py --scripts example_scripts/
 ```
-
 Scripts saved to `generated_scripts/` directory.
 
 Scripts will be ran, fixes attempted on failure, and reran.
