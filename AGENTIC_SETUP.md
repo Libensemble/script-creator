@@ -1,7 +1,7 @@
 # Running libEnsemble agent workflows
 
 For all workflows, you will need an OpenAPI key. 
-Requires an [OpenAI account](platform.openai.com).
+Requires an [OpenAI account](https://platform.openai.com).
 Make sure to check MODEL at top of agentic script and usage rates.
 
 Option to run with a local model will be added soon.
@@ -12,7 +12,7 @@ Set user OpenAI API Key:
 export OPENAI_API_KEY="sk-your-key-here"
 ```
 
-## Running libe_agent_basic.py
+## libe_agent_basic.py
 
 Agent for running libEnsemble scripts with error recovery.
 
@@ -21,12 +21,6 @@ Requires:
 ```bash
 pip install libensemble langchain langchain-openai
 ```
-
-You will need to use an OpenAPI key. Requires an OpenAI account
-(from OpenAI's platform at platform.openai.com).
-Make sure to check MODEL at top of agentic script and usage rates.
-
-Option to run with a local model will be added soon.
 
 ### Running
 
@@ -53,7 +47,7 @@ to a working directory `generated_scripts/`.
 python libe_agent_basic.py --scripts tests/scripts_with_errors/
 ```
 
-## Running libe_agent_with_script_generator.py
+## libe_agent_with_script_generator.py
 
 Agent for libEnsemble scripts with error recovery, including optional use of
 the script generator MCP tool.
@@ -102,6 +96,9 @@ python libe_agent_with_script_generator.py --prompt-file my_prompt.txt
 
 # Use existing scripts (skip MCP generation/tweaking)
 python libe_agent_with_script_generator.py --scripts example_scripts/
+
+# Run from anywhere 
+python libe_agent_with_script_generator.py --mcp-server <path/to/mcp_server.mjs>
 ```
 Scripts saved to `generated_scripts/` directory.
 
