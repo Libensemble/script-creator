@@ -34,10 +34,11 @@ from mcp.client.stdio import stdio_client
 
 
 # Maximum retry attempts for fixing failed scripts
-MAX_RETRIES = 1
+MAX_RETRIES = 2
 
 # OpenAI model to use
-MODEL = "gpt-4o-mini"
+DEFAULT_MODEL = "gpt-4o-mini"
+MODEL = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
 
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
@@ -88,9 +89,11 @@ Here are the current scripts (main run script is {run_script_name}):
 {scripts_text}
 
 Fix the scripts to resolve this error.
+DO NOT make any other changes or improvements.
 Return ALL scripts in the EXACT SAME FORMAT (=== filename === followed by raw Python code).
 DO NOT merge or consolidate files - keep the same file structure.
 DO NOT wrap in markdown or add explanations."""
+
 
 # Global MCP session
 mcp_session = None
@@ -365,7 +368,11 @@ async def main():
             )
             
             # Create LangChain agent
-            llm = ChatOpenAI(model=MODEL, temperature=0)
+            llm = ChatOpenAI(
+                model=MODEL,
+                temperature=0,
+                base_url=os.environ.get("OPENAI_BASE_URL"),  # Inference service (defaults to OpenAI)
+            )
             agent = create_agent(llm, [lc_tool])
             
             # Stage 1: Run MCP generator

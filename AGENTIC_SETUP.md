@@ -4,13 +4,35 @@ For all workflows, you will need an OpenAPI key.
 Requires an [OpenAI account](https://platform.openai.com).
 Make sure to check MODEL at top of agentic script and usage rates.
 
-Option to run with a local model will be added soon.
-
 Set user OpenAI API Key:
 
 ```bash
 export OPENAI_API_KEY="sk-your-key-here"
 ```
+
+<details>
+<summary>Using Argonne inference service (optional)</summary>
+
+If you have an ALCF account, you can use Argonne inference service instead of OpenAI.
+
+Authenticate via Globus to obtain ALCF inference token:
+
+```bash
+pip install openai globus_sdk
+wget https://raw.githubusercontent.com/argonne-lcf/inference-endpoints/main/inference_auth_token.py
+python inference_auth_token.py authenticate  # Enter globus authentication when prompted.
+```
+
+Set environment variables for ALCF Inference service and model. Obtain API Key:
+
+```bash
+export OPENAI_BASE_URL=https://inference-api.alcf.anl.gov/resource_server/metis/api/v1
+export LLM_MODEL=gpt-oss-120b
+export OPENAI_API_KEY=$(python inference_auth_token.py get_access_token)
+```
+
+</details>
+
 
 ## libe_agent_basic.py
 
