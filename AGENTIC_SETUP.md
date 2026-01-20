@@ -25,7 +25,8 @@ pip install libensemble langchain langchain-openai
 ### Running
 
 ```bash
-cd agentic/
+git clone https://github.com/Libensemble/script-creator.git
+cd script-creator/agentic/
 ```
 
 To run:
