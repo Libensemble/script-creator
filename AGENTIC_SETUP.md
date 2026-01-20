@@ -28,7 +28,24 @@ pip install libensemble langchain langchain-openai
 cd agentic/
 ```
 
-If using the supplied example, build **six_hump_camel.x**:
+To run:
+
+Provide path to directory with your libEnsemble scripts. These will be copied 
+to a working directory `generated_scripts/`.
+
+```bash
+python libe_agent_basic.py --scripts tests/scripts_with_errors/
+```
+
+This basic agentic script is sufficiently general that it should work with
+any Python workflow, not just libEnsemble. Any Python scripts in the
+input directory will be presented to the AI in the case of error. The default
+run script should be of the form `run_*.py`.
+
+
+## Running scripts with a binary
+
+To run test scripts_with_exe_with_errors/ , build **six_hump_camel.x**:
 
 ```bash
 cd tests/six_hump_camel/
@@ -44,14 +61,8 @@ Provide path to directory with your libEnsemble scripts. These will be copied
 to a working directory `generated_scripts/`.
 
 ```bash
-python libe_agent_basic.py --scripts tests/scripts_with_errors/
+python libe_agent_basic.py --scripts tests/scripts_with_exe_with_errors/
 ```
-
-This basic agentic script is sufficiently general that it should work with
-any Python workflow, not just libEnsemble. Any Python scripts in the
-input directory will be presented to the AI in the case of error. The default
-run script should be of the form `run_*.py`.
-
 
 ## libe_agent_with_script_generator.py
 
