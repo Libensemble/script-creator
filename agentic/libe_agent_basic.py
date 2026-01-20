@@ -33,6 +33,16 @@ MODEL = "gpt-4o-mini"
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
 
+# Files and directories to archive after each run
+# Can include directory names and glob patterns (e.g., "*.npy", "ensemble/", "*.log")
+ARCHIVE_ITEMS = [
+    "ensemble",           # libEnsemble output directory
+    "ensemble.log",       # libEnsemble log file
+    "libE_stats.txt",     # libEnsemble stats file
+    "*.npy",              # NumPy arrays
+    "*.pickle",           # Pickle files
+]
+
 # Template for fixing failed scripts
 FIX_PROMPT_TEMPLATE = """These scripts failed with the following error:
 
@@ -87,15 +97,18 @@ def archive_run_outputs(output_dir, archive_name, error_msg=""):
     if error_msg:
         (run_output_dir / "error.txt").write_text(error_msg)
     
-    # Move ensemble directory
-    ensemble_dir = output_dir / "ensemble"
-    if ensemble_dir.exists():
-        shutil.move(str(ensemble_dir), str(run_output_dir / "ensemble"))
-    
-    # Move log and stats files
-    for pattern in ["ensemble.log", "libE_stats.txt", "*.npy", "*.pickle"]:
-        for filepath in output_dir.glob(pattern):
-            shutil.move(str(filepath), str(run_output_dir / filepath.name))
+    # Archive items specified in ARCHIVE_ITEMS configuration
+    for item in ARCHIVE_ITEMS:
+        item_path = output_dir / item
+        
+        # Check if it's a directory
+        if item_path.exists() and item_path.is_dir():
+            shutil.move(str(item_path), str(run_output_dir / item))
+        # Otherwise treat as a glob pattern
+        else:
+            for filepath in output_dir.glob(item):
+                if filepath.is_file():
+                    shutil.move(str(filepath), str(run_output_dir / filepath.name))
 
 def detect_run_script(directory):
     """Find the run script in directory (first run_*.py file)"""
