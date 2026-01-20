@@ -38,6 +38,13 @@ to a working directory `generated_scripts/`.
 python libe_agent_basic.py --scripts tests/scripts_with_errors/
 ```
 
+To see script fixes:
+
+```bash
+cd generated_scripts/versions/
+diff 1_copied_scripts/run_example.py 2_fix_attempt_1/run_example.py
+```
+
 This basic agentic script is sufficiently general that it should work with
 any Python workflow, not just libEnsemble. Any Python scripts in the
 input directory will be presented to the AI in the case of error. The default
