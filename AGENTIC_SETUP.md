@@ -1,4 +1,4 @@
-# Running libEnsemble agent workflows
+# Running libEnsemble agentic workflows
 
 For all workflows, you will need an OpenAPI key. 
 Requires an [OpenAI account](https://platform.openai.com).
@@ -46,6 +46,12 @@ to a working directory `generated_scripts/`.
 ```bash
 python libe_agent_basic.py --scripts tests/scripts_with_errors/
 ```
+
+This basic agentic script is sufficiently general that it should work with
+any Python workflow, not just libEnsemble. Any Python scripts in the
+input directory will be presented to the AI in the case of error. The default
+run script should be of the form `run_*.py`.
+
 
 ## libe_agent_with_script_generator.py
 
