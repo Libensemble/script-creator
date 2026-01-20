@@ -88,9 +88,9 @@ def save_scripts(scripts_text, output_dir, archive_name=None):
             archive_path.write_text(content.strip() + "\n")
 
 def archive_run_outputs(output_dir, archive_name, error_msg=""):
-    """Move run outputs to run_output/ subdirectory under the archive"""
+    """Move run outputs to output/ subdirectory under the archive"""
     output_dir = Path(output_dir)
-    run_output_dir = output_dir / "versions" / archive_name / "run_output"
+    run_output_dir = output_dir / "versions" / archive_name / "output"
     run_output_dir.mkdir(parents=True, exist_ok=True)
     
     # Save error output
