@@ -232,11 +232,29 @@ def copy_existing_scripts(scripts_dir, output_dir):
 
 def find_mcp_server(user_provided_path=None):
     """Find mcp_server.mjs file.
-    Search order: 1) user provided path, 2) parent directory, 3) current directory"""
-    search_locations = (
-        [Path(user_provided_path)] if user_provided_path else
-        [Path(__file__).parent.parent / "mcp_server.mjs", Path.cwd() / "mcp_server.mjs"]
-    )
+    Search order: 
+    1) --mcp-server CLI argument (if provided)
+    2) MCP_SERVER environment variable (if set)
+    3) Parent directory (../mcp_server.mjs)
+    4) Current directory (./mcp_server.mjs)
+    """
+    # Build search locations with proper precedence
+    search_locations = []
+    
+    # Priority 1: CLI argument
+    if user_provided_path:
+        search_locations.append(Path(user_provided_path))
+    
+    # Priority 2: Environment variable
+    env_path = os.environ.get('MCP_SERVER')
+    if env_path:
+        search_locations.append(Path(env_path))
+    
+    # Priority 3 & 4: Default locations
+    search_locations.extend([
+        Path(__file__).parent.parent / "mcp_server.mjs",
+        Path.cwd() / "mcp_server.mjs"
+    ])
     
     for location in search_locations:
         if location.exists():
@@ -244,7 +262,7 @@ def find_mcp_server(user_provided_path=None):
     
     print(f"Error: Cannot find mcp_server.mjs")
     print(f"Searched: {', '.join(str(loc) for loc in search_locations)}")
-    print("Use --mcp-server to specify location")
+    print("Specify location via --mcp-server flag or MCP_SERVER environment variable")
     sys.exit(1)
 
 
@@ -317,7 +335,7 @@ async def main():
     parser.add_argument("--prompt", help="Prompt for script generation (default: use DEFAULT_PROMPT)")
     parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
-    parser.add_argument("--mcp-server", help="Path to mcp_server.mjs file")
+    parser.add_argument("--mcp-server", help="Path to mcp_server.mjs file (overrides MCP_SERVER env var)")
     args = parser.parse_args()
     
     # Get prompt from file if specified, otherwise use --prompt or default
