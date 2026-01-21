@@ -136,7 +136,7 @@ async def run_mcp_generator(agent, user_prompt):
 
 async def update_scripts(agent, scripts_text, user_prompt):
     """Stage 2: Update scripts based on user requirements"""
-    print("Updating script details...")
+    print("Refining script details...")
     
     refine_prompt = REFINE_PROMPT_TEMPLATE.format(
         scripts_text=scripts_text,
@@ -174,7 +174,7 @@ def save_scripts(scripts_text, output_dir, archive_name=None):
     for filename, content in matches:
         filepath = output_dir / filename.strip()
         filepath.write_text(content.strip() + "\n")
-        print(f"Saved: {filepath}")
+        print(f"- Saved: {filepath}")
     
     # Archive this version if requested
     if archive_name:

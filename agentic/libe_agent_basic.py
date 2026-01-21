@@ -81,7 +81,7 @@ def save_scripts(scripts_text, output_dir, archive_name=None):
     for filename, content in matches:
         filepath = output_dir / filename.strip()
         filepath.write_text(content.strip() + "\n")
-        print(f"Saved: {filepath}")
+        print(f"- Saved: {filepath}")
     
     # Archive this version if requested
     if archive_name:
