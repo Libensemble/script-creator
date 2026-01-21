@@ -13,13 +13,6 @@ from libensemble.specs import AllocSpecs, ExitCriteria, GenSpecs, LibeSpecs, Sim
 if __name__ == "__main__":
     exctr = MPIExecutor()
 
-    sim_app = "/home/shudson/test_mcp/script-creator/agentic/tests/six_hump_camel/six_hump_camel.x"
-
-    if not os.path.isfile(sim_app):
-        sys.exit(f"Application not found: {sim_app}")
-
-    exctr.register_app(full_path=sim_app, app_name="six_hump_camel")
-
     num_workers = 4
 
     libE_specs = LibeSpecs(
