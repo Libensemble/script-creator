@@ -16,7 +16,7 @@ pip install academy-py globus-compute-endpoint globus-compute-sdk
 globus-compute-endpoint configure aurora
 ```
 
-Place remote/user_config_template.yaml.j2 in user configuration space.
+Place `remote/user_config_template.yaml.j2` in user configuration space.
 
 ```bash
 ${HOME}/.globus_compute/aurora/user_config_template.yaml.j2
@@ -52,7 +52,7 @@ pip install academy-py globus-compute-sdk
 ```bash
 conda activate academy_test
 export ACADEMY_ENDPOINT="<endpoint-uuid-from-aurora>"
-python run_test.py.py
+python run_test.py
 ```
 
 ## Troubleshooting
@@ -60,5 +60,5 @@ python run_test.py.py
 To run test locally without Globus:
 ```bash
 unset ACADEMY_ENDPOINT
-python run_test.py.py
+python run_test.py
 ```
