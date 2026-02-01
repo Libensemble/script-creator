@@ -122,9 +122,14 @@ def archive_run_output(error_msg: str):
 async def run_script_tool(script_name: str) -> str:
     """Run a Python script and return output or error"""
     script_path = WORK_DIR / script_name
+    timeout_seconds = 300
     
     if not script_path.exists():
-        return f"ERROR: Script '{script_name}' not found in {WORK_DIR}"
+        msg = f"ERROR: Script '{script_name}' not found in {WORK_DIR}"
+        print(f"\n{msg}\n")
+        return msg
+    
+    print("\nRunning scripts...")
     
     try:
         result = subprocess.run(
@@ -132,20 +137,32 @@ async def run_script_tool(script_name: str) -> str:
             cwd=WORK_DIR,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=timeout_seconds
         )
         
         if result.returncode == 0:
-            return f"SUCCESS: Script ran successfully.\nOutput:\n{result.stdout[:500]}"
+            print("✓ Script ran successfully")
+            msg = f"SUCCESS: Script ran successfully.\nOutput:\n{result.stdout[:500]}"
         else:
-            error_msg = f"Return code {result.returncode}\nStderr:\n{result.stderr}\nStdout:\n{result.stdout}"
+            error_msg = f"Return code {result.returncode}\nStderr: {result.stderr}\nStdout: {result.stdout}"
+            print(f"✗ Scripts failed with return code {result.returncode}")
+            if result.stderr:
+                error_summary = result.stderr.strip().split('\n')[-1]
+                print(f"Error summary: {error_summary}\n")
             # Archive the failed run output (goes with the current scripts)
             archive_run_output(error_msg)
-            return f"FAILED: Script failed with return code {result.returncode}\nStderr:\n{result.stderr[:500]}\nStdout:\n{result.stdout[:500]}"
+            msg = f"FAILED: Script failed with return code {result.returncode}\n\nStderr:\n{result.stderr}\n\nStdout:\n{result.stdout[:500]}"
+        
+        return msg
+        
     except subprocess.TimeoutExpired:
-        return "ERROR: Script timed out after 5 minutes"
+        msg = f"ERROR: Script timed out after {timeout_seconds} seconds"
+        print(f"\n{msg}\n")
+        return msg
     except Exception as e:
-        return f"ERROR: {str(e)}"
+        msg = f"ERROR: {str(e)}"
+        print(msg)
+        return msg
 
 
 async def read_file_tool(filepath: str) -> str:
@@ -173,7 +190,9 @@ async def write_file_tool(filepath: str, content: str) -> str:
         archive_current_scripts()
         return f"SUCCESS: Wrote {len(content)} characters to {filepath}"
     except Exception as e:
-        return f"ERROR writing file: {str(e)}"
+        msg = f"ERROR writing file: {str(e)}"
+        print(msg)
+        return msg
 
 
 async def list_files_tool() -> str:
@@ -284,7 +303,7 @@ Start by running '{run_script_name}'."""
     print("AGENT GOAL:")
     print(goal)
     print("="*60)
-    print("\nStarting autonomous agent...\n")
+    print("\nStarting autonomous agent...")
     
     try:
         result = await agent.ainvoke({
