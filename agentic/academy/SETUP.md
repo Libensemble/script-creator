@@ -1,9 +1,16 @@
 # Academy Test Setup
 
-Note: This is currently just running the Academy test from the docs.
-
 Tests using remote agents on Aurora, placed by Globus Compute, and
-using the online HttpExchange.
+using the online HttpExchange to communicate.
+
+Script `run_agent_batch.py` runs the `libe_agent_basic_auto.py` via academy.
+ - Ensure correct configuration at the top of the script (for your Aurora setup)
+
+Script `run_test.py` runs the Academy test from the docs.
+
+If environment variable `ACADEMY_ENDPOINT` is unset, the agents run locally.
+
+Instructions below run `run_test.py`. 
 
 ## Aurora (Remote)
 
@@ -62,3 +69,12 @@ To run test locally without Globus:
 unset ACADEMY_ENDPOINT
 python run_test.py
 ```
+
+## To run `run_agent_batch.py` 
+
+You will also need to install 
+```bash
+pip install libensemble mpmath scipy langchain langchain_openai
+```
+
+Make sure `OPENAI_API_KEY` is set in your environment (it will be passed to Aurora).
