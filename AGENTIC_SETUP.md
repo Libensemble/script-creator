@@ -41,7 +41,7 @@ Agent for running libEnsemble scripts with error recovery.
 Requires:
 
 ```bash
-pip install libensemble langchain langchain-openai
+pip install libensemble scipy mpmath langchain langchain-openai
 ```
 
 ### Running
