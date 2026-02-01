@@ -10,7 +10,7 @@ Instead of hardcoded stages, the agent decides:
 - When to fix errors
 - When to retry
 
-For options: python libe_agent_basic_autonomous.py -h
+For options: python libe_agent_basic_auto.py -h
 """
 
 import os
