@@ -293,7 +293,7 @@ Instructions:
 3. If it fails, read the failing script to understand the error
 4. Fix the script by writing the corrected version
 5. Run it again to verify the fix works
-6. Repeat until successful or you determine it's unfixable
+6. Repeat until successful or you determine it's unfixable, or you have tried three times.
 
 The script is in the current working directory. Use the tools available to accomplish this goal.
 
