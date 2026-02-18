@@ -12,7 +12,7 @@ pip install fastapi uvicorn[standard] gradio websockets
 
 ## Usage
 
-### Quick Start (Recommended)
+### Quick Start
 
 Start the gradio web server (from web_ui dir):
 
@@ -25,7 +25,7 @@ Click on the URL shown in the terminal to open the web interface.
 ### Use the Web Interface
 
 1. **Select Agent Script**: Choose which agent script to run (e.g., `libe_agent_basic.py`)
-2. **Select Scripts Directory**: Choose the test directory containing scripts to process
+2. **Select Scripts Directory**: Choose the test directory containing scripts to process (e.g., scripts_with_errors).
 3. **Click Run**: The agent will execute and output will appear in real-time
 4. **View Generated Scripts**: Generated scripts will appear in the dropdown and can be viewed
 
