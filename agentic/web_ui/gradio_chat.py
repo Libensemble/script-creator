@@ -12,8 +12,8 @@ import gradio as gr
 import websockets
 
 WS_URL = "ws://127.0.0.1:8000/ws/test"
-AGENT_DIR = Path(__file__).parent.parent
-TESTS_DIR = AGENT_DIR / "tests"
+DEFAULT_AGENT_DIR = Path(__file__).parent.parent
+DEFAULT_TESTS_DIR = DEFAULT_AGENT_DIR / "tests"
 
 ws_conn = None
 message_queue = Queue()
@@ -23,15 +23,41 @@ stop_event = threading.Event()
 uvicorn_process = None
 
 
-def scan_agent_scripts():
-    exclude = {"app.py", "gradio_chat.py", "__init__.py"}
-    return [f.name for f in sorted(AGENT_DIR.glob("*.py")) if f.name not in exclude]
-
-
-def scan_script_dirs():
-    if not TESTS_DIR.exists():
+def scan_agent_scripts(agent_dir_path):
+    try:
+        if not agent_dir_path:
+            return []
+        agent_dir = Path(agent_dir_path)
+        if not agent_dir.exists():
+            print(f"Warning: Agent directory does not exist: {agent_dir_path}")
+            return []
+        if not agent_dir.is_dir():
+            print(f"Warning: Agent path is not a directory: {agent_dir_path}")
+            return []
+        exclude = {"app.py", "gradio_chat.py", "__init__.py"}
+        scripts = [f.name for f in sorted(agent_dir.glob("*.py")) if f.name not in exclude]
+        return scripts
+    except Exception as e:
+        print(f"Error scanning agent scripts: {e}")
         return []
-    return [d.name for d in sorted(TESTS_DIR.iterdir()) if d.is_dir() and not d.name.startswith("_")]
+
+
+def scan_script_dirs(scripts_dir_path):
+    try:
+        if not scripts_dir_path:
+            return []
+        scripts_dir = Path(scripts_dir_path)
+        if not scripts_dir.exists():
+            print(f"Warning: Scripts directory does not exist: {scripts_dir_path}")
+            return []
+        if not scripts_dir.is_dir():
+            print(f"Warning: Scripts path is not a directory: {scripts_dir_path}")
+            return []
+        dirs = [d.name for d in sorted(scripts_dir.iterdir()) if d.is_dir() and not d.name.startswith("_")]
+        return dirs
+    except Exception as e:
+        print(f"Error scanning script directories: {e}")
+        return []
 
 
 
@@ -71,23 +97,37 @@ def websocket_worker():
     loop.close()
 
 
+_init_agents = scan_agent_scripts(str(DEFAULT_AGENT_DIR))
+_init_tests = scan_script_dirs(str(DEFAULT_TESTS_DIR))
+
 with gr.Blocks() as demo:
-    gr.Markdown("### libEnsemble Agent")
+    with gr.Row():
+        gr.Markdown("### libEnsemble Agent")
+        with gr.Column(scale=0, min_width=60):
+            settings_btn = gr.Button("⚙️", size="sm")
+
+    agent_dir_state = gr.State(value=str(DEFAULT_AGENT_DIR))
+    scripts_dir_state = gr.State(value=str(DEFAULT_TESTS_DIR))
+    settings_visible = gr.State(value=False)
+
+    with gr.Column(visible=False) as settings_modal:
+        with gr.Column(elem_classes="modal-content"):
+            gr.Markdown("### Settings")
+            agent_dir_input = gr.Textbox(label="Agent Directory", value=str(DEFAULT_AGENT_DIR))
+            scripts_dir_input = gr.Textbox(label="Scripts Directory", value=str(DEFAULT_TESTS_DIR))
+            with gr.Row():
+                apply_settings_btn = gr.Button("Apply", variant="primary", scale=1)
+                close_settings_btn = gr.Button("Close", scale=1)
 
     with gr.Row():
         agent_dropdown = gr.Dropdown(
-            label="Agent Script",
-            choices=scan_agent_scripts(),
-            value=scan_agent_scripts()[0] if scan_agent_scripts() else None,
-            allow_custom_value=True,
-            scale=2
+            label="Agent Script", choices=_init_agents,
+            value=_init_agents[0] if _init_agents else None,
+            allow_custom_value=True, scale=2
         )
         scripts_dropdown = gr.Dropdown(
-            label="Scripts Directory",
-            choices=scan_script_dirs(),
-            value=None,
-            allow_custom_value=True,
-            scale=2
+            label="Scripts Directory", choices=_init_tests,
+            value=None, allow_custom_value=True, scale=2
         )
         run_btn = gr.Button("Run", variant="primary", scale=1)
         reset_btn = gr.Button("Reset", variant="stop", scale=1)
@@ -166,12 +206,34 @@ with gr.Blocks() as demo:
                 yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
                 time.sleep(0.1)
 
-    def send_and_clear(agent_script, scripts_dir):
+    def toggle_settings(current_visible):
+        return not current_visible, gr.update(visible=not current_visible)
+    
+    def apply_settings(agent_dir, scripts_dir):
+        new_agent_dir = agent_dir.strip() if agent_dir and agent_dir.strip() else str(DEFAULT_AGENT_DIR)
+        new_scripts_dir = scripts_dir.strip() if scripts_dir and scripts_dir.strip() else str(DEFAULT_TESTS_DIR)
+        
+        agent_choices = scan_agent_scripts(new_agent_dir)
+        scripts_choices = scan_script_dirs(new_scripts_dir)
+        
+        return (
+            new_agent_dir,
+            new_scripts_dir,
+            gr.update(choices=agent_choices, value=agent_choices[0] if agent_choices else None),
+            gr.update(choices=scripts_choices, value=None),
+            False,  # settings_visible - close modal
+            gr.update(visible=False)  # settings_modal
+        )
+    
+    def send_and_clear(agent_script, scripts_dir, agent_dir_state_val, scripts_dir_state_val):
         if agent_script and scripts_dir:
-            # Just send the script name - backend will run from AGENT_DIR
+            # Use configured directories
+            agent_dir = Path(agent_dir_state_val) if agent_dir_state_val else DEFAULT_AGENT_DIR
+            scripts_base_dir = Path(scripts_dir_state_val) if scripts_dir_state_val else DEFAULT_TESTS_DIR
+            
             # Convert directory name to full path
             if not Path(scripts_dir).is_absolute():
-                scripts_dir = str(AGENT_DIR / "tests" / scripts_dir)
+                scripts_dir = str(scripts_base_dir / scripts_dir)
             
             while not output_queue.empty():
                 try:
@@ -180,7 +242,8 @@ with gr.Blocks() as demo:
                     break
             msg = json.dumps({
                 "agent_script": agent_script,  # Just the filename
-                "scripts_dir": scripts_dir
+                "scripts_dir": scripts_dir,
+                "agent_dir": str(agent_dir)  # Send agent dir so backend knows where to run from
             })
             message_queue.put(msg)
         return ""
@@ -212,9 +275,29 @@ with gr.Blocks() as demo:
 
     demo.load(start_websocket)
 
+    settings_btn.click(
+        toggle_settings,
+        inputs=[settings_visible],
+        outputs=[settings_visible, settings_modal]
+    )
+    
+    def close_settings():
+        return False, gr.update(visible=False)
+    
+    close_settings_btn.click(
+        close_settings,
+        outputs=[settings_visible, settings_modal]
+    )
+    
+    apply_settings_btn.click(
+        apply_settings,
+        inputs=[agent_dir_input, scripts_dir_input],
+        outputs=[agent_dir_state, scripts_dir_state, agent_dropdown, scripts_dropdown, settings_visible, settings_modal]
+    )
+
     run_btn.click(
         send_and_clear,
-        inputs=[agent_dropdown, scripts_dropdown],
+        inputs=[agent_dropdown, scripts_dropdown, agent_dir_state, scripts_dir_state],
         outputs=[output_logs]
     ).then(
         process_messages,

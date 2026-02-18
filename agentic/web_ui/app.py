@@ -53,10 +53,11 @@ class Session:
         except Exception as e:
             self.output_queue.put(("error", str(e)))
 
-    async def run_agent(self, agent_script, scripts_dir, ws):
+    async def run_agent(self, agent_script, scripts_dir, ws, agent_dir=None):
         await self._log(ws, f"started: {agent_script} --scripts {scripts_dir}")
 
-        # Just use the script name - we'll run from AGENT_DIR
+        # Use configured agent_dir or default
+        run_dir = Path(agent_dir) if agent_dir else AGENT_DIR
         cmd = [sys.executable, agent_script, "--scripts", scripts_dir]
 
         # Clear queue
@@ -68,7 +69,7 @@ class Session:
 
         thread = threading.Thread(
             target=self._subprocess_thread,
-            args=(cmd, str(AGENT_DIR)),  # Run from AGENT_DIR
+            args=(cmd, str(run_dir)),  # Run from configured directory
             daemon=True
         )
         thread.start()
@@ -107,7 +108,8 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
             msg = json.loads(raw)
             agent_script = msg.get("agent_script", "libe_agent_basic.py")
             scripts_dir = msg.get("scripts_dir", "")
+            agent_dir = msg.get("agent_dir", None)
             if scripts_dir:
-                await s.run_agent(agent_script, scripts_dir, ws)
+                await s.run_agent(agent_script, scripts_dir, ws, agent_dir=agent_dir)
     except WebSocketDisconnect:
         pass
