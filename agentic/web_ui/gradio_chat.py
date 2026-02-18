@@ -1,6 +1,10 @@
 import asyncio
 import json
+import socket
+import subprocess
+import sys
 import threading
+import time
 from pathlib import Path
 from queue import Queue, Empty
 
@@ -16,6 +20,7 @@ message_queue = Queue()
 output_queue = Queue()
 ws_thread = None
 stop_event = threading.Event()
+uvicorn_process = None
 
 
 def scan_agent_scripts():
@@ -228,4 +233,65 @@ with gr.Blocks() as demo:
         outputs=output_script
     )
 
-demo.launch()
+
+def start_uvicorn_server():
+    """Start uvicorn server in background"""
+    global uvicorn_process
+    try:
+        # Check if server is already running
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('127.0.0.1', 8000))
+        sock.close()
+        if result == 0:
+            print("✓ Uvicorn server already running on port 8000")
+            return
+    except:
+        pass
+    
+    # Start uvicorn server
+    print("Starting uvicorn server...")
+    uvicorn_process = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "app:app", "--reload", "--port", "8000"],
+        cwd=str(Path(__file__).parent),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    
+    # Wait for server to be ready (check if port is listening)
+    max_wait = 3  # seconds
+    waited = 0
+    while waited < max_wait:
+        if uvicorn_process.poll() is not None:
+            # Process died
+            print("✗ Failed to start uvicorn server")
+            stderr = uvicorn_process.stderr.read().decode() if uvicorn_process.stderr else ""
+            print(f"Error: {stderr}")
+            return
+        
+        # Check if port is listening
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('127.0.0.1', 8000))
+        sock.close()
+        if result == 0:
+            print("✓ Uvicorn server started on port 8000")
+            return
+        
+        time.sleep(0.5)
+        waited += 0.5
+    
+    print("⚠ Uvicorn server may not be ready yet (timeout)")
+
+
+if __name__ == "__main__":
+    # Start uvicorn server before launching Gradio
+    start_uvicorn_server()
+    
+    # Launch Gradio interface
+    print("Starting Gradio interface...")
+    demo.launch()
+    
+    # Cleanup: stop uvicorn when Gradio exits
+    if uvicorn_process:
+        print("\nStopping uvicorn server...")
+        uvicorn_process.terminate()
+        uvicorn_process.wait()
