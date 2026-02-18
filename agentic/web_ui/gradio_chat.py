@@ -14,6 +14,7 @@ import websockets
 WS_URL = "ws://127.0.0.1:8000/ws/test"
 DEFAULT_AGENT_DIR = Path(__file__).parent.parent
 DEFAULT_TESTS_DIR = DEFAULT_AGENT_DIR / "tests"
+DEFAULT_AGENT_PATTERN = "libe_agent*.py"
 
 ws_conn = None
 message_queue = Queue()
@@ -23,7 +24,9 @@ stop_event = threading.Event()
 uvicorn_process = None
 
 
-def scan_agent_scripts(agent_dir_path):
+def scan_agent_scripts(agent_dir_path, pattern=None):
+    if pattern is None:
+        pattern = DEFAULT_AGENT_PATTERN
     try:
         if not agent_dir_path:
             return []
@@ -35,7 +38,7 @@ def scan_agent_scripts(agent_dir_path):
             print(f"Warning: Agent path is not a directory: {agent_dir_path}")
             return []
         exclude = {"app.py", "gradio_chat.py", "__init__.py"}
-        scripts = [f.name for f in sorted(agent_dir.glob("*.py")) if f.name not in exclude]
+        scripts = [f.name for f in sorted(agent_dir.glob(pattern)) if f.name not in exclude]
         return scripts
     except Exception as e:
         print(f"Error scanning agent scripts: {e}")
@@ -127,16 +130,18 @@ with gr.Blocks() as demo:
 
     agent_dir_state = gr.State(value=str(DEFAULT_AGENT_DIR))
     scripts_dir_state = gr.State(value=str(DEFAULT_TESTS_DIR))
+    agent_pattern_state = gr.State(value=DEFAULT_AGENT_PATTERN)
     settings_visible = gr.State(value=False)
 
     with gr.Column(visible=False) as settings_modal:
         with gr.Column(elem_classes="modal-content"):
             gr.Markdown("### Settings")
             agent_dir_input = gr.Textbox(label="Agent Directory", value=str(DEFAULT_AGENT_DIR))
-            scripts_dir_input = gr.Textbox(label="Scripts Directory", value=str(DEFAULT_TESTS_DIR))
+            scripts_dir_input = gr.Textbox(label="Scripts Parent Directory", value=str(DEFAULT_TESTS_DIR))
+            agent_pattern_input = gr.Textbox(label="Agent Script Pattern", value=DEFAULT_AGENT_PATTERN)
             with gr.Row():
-                apply_settings_btn = gr.Button("Apply", variant="primary", scale=1)
-                close_settings_btn = gr.Button("Close", scale=1)
+                apply_settings_btn = gr.Button("Apply", variant="primary", size="sm")
+                close_settings_btn = gr.Button("Close", size="sm")
 
     with gr.Row():
         agent_dropdown = gr.Dropdown(
@@ -148,8 +153,8 @@ with gr.Blocks() as demo:
             label="Scripts Directory", choices=_init_tests,
             value=None, allow_custom_value=True, scale=2
         )
-        run_btn = gr.Button("Run", variant="primary", scale=1)
-        reset_btn = gr.Button("Reset", variant="stop", scale=1)
+        run_btn = gr.Button("Run", variant="primary")
+        reset_btn = gr.Button("Reset", variant="stop")
 
     scripts_dict = gr.State(value={})
 
@@ -167,20 +172,25 @@ with gr.Blocks() as demo:
 
     def process_messages(scripts_state):
         import time
-        scripts = scripts_state if scripts_state else {}
-        script_names = list(scripts.keys())
-        selected_script = script_names[0] if script_names else None
-        logs = ""
-        done = False
-        task_started = False
-        start_time = time.time()
-        timeout = 300
+        try:
+            scripts = scripts_state if scripts_state else {}
+            script_names = list(scripts.keys())
+            selected_script = script_names[0] if script_names else None
+            logs = ""
+            done = False
+            task_started = False
+            start_time = time.time()
+            timeout = 300
 
-        while not output_queue.empty():
-            try:
-                output_queue.get_nowait()
-            except Empty:
-                break
+            while not output_queue.empty():
+                try:
+                    output_queue.get_nowait()
+                except Empty:
+                    break
+        except Exception as e:
+            error_msg = f"ERROR in process_messages: {str(e)}"
+            print(error_msg)
+            return error_msg, {}, gr.update(choices=[], value=None), ""
 
         wait_start = time.time()
         while not task_started and (time.time() - wait_start) < 10:
@@ -193,11 +203,21 @@ with gr.Blocks() as demo:
                         logs += msg["text"] + "\n"
                         yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
                         break
+                elif msg_type == "error":
+                    logs += f"ERROR: {data}\n"
+                    yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
+                    return
             except Empty:
                 yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
                 time.sleep(0.1)
+            except Exception as e:
+                error_msg = f"ERROR waiting for task: {str(e)}"
+                logs += error_msg + "\n"
+                yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
+                return
 
         if not task_started:
+            logs += "ERROR: Task did not start within 10 seconds. Check websocket connection.\n"
             yield logs, scripts, gr.update(choices=script_names, value=selected_script), scripts.get(selected_script, "") if selected_script else ""
             return
 
@@ -233,16 +253,18 @@ with gr.Blocks() as demo:
     def toggle_settings(current_visible):
         return not current_visible, gr.update(visible=not current_visible)
     
-    def apply_settings(agent_dir, scripts_dir):
+    def apply_settings(agent_dir, agent_pattern, scripts_dir):
         new_agent_dir = agent_dir.strip() if agent_dir and agent_dir.strip() else str(DEFAULT_AGENT_DIR)
+        new_agent_pattern = agent_pattern.strip() if agent_pattern and agent_pattern.strip() else DEFAULT_AGENT_PATTERN
         new_scripts_dir = scripts_dir.strip() if scripts_dir and scripts_dir.strip() else str(DEFAULT_TESTS_DIR)
         
-        agent_choices = scan_agent_scripts(new_agent_dir)
+        agent_choices = scan_agent_scripts(new_agent_dir, new_agent_pattern)
         scripts_choices = scan_script_dirs(new_scripts_dir)
         version_choices = scan_versions(new_agent_dir)
         
         return (
             new_agent_dir,
+            new_agent_pattern,
             new_scripts_dir,
             gr.update(choices=agent_choices, value=agent_choices[0] if agent_choices else None),
             gr.update(choices=scripts_choices, value=None),
@@ -252,7 +274,12 @@ with gr.Blocks() as demo:
         )
     
     def send_and_clear(agent_script, scripts_dir, agent_dir_state_val, scripts_dir_state_val):
-        if agent_script and scripts_dir:
+        try:
+            if not agent_script:
+                return "ERROR: No agent script selected"
+            if not scripts_dir:
+                return "ERROR: No scripts directory selected"
+            
             agent_dir = Path(agent_dir_state_val) if agent_dir_state_val else DEFAULT_AGENT_DIR
             scripts_base_dir = Path(scripts_dir_state_val) if scripts_dir_state_val else DEFAULT_TESTS_DIR
             
@@ -264,13 +291,19 @@ with gr.Blocks() as demo:
                     output_queue.get_nowait()
                 except Empty:
                     break
+            
+            if not ws_thread or not ws_thread.is_alive():
+                return "ERROR: Websocket not connected. Try refreshing the page."
+            
             msg = json.dumps({
                 "agent_script": agent_script,
                 "scripts_dir": scripts_dir,
                 "agent_dir": str(agent_dir)
             })
             message_queue.put(msg)
-        return ""
+            return ""
+        except Exception as e:
+            return f"ERROR in send_and_clear: {str(e)}"
     
     def load_version_scripts(version, agent_dir_state_val):
         """Load scripts directly from a version directory"""
@@ -333,8 +366,8 @@ with gr.Blocks() as demo:
     
     apply_settings_btn.click(
         apply_settings,
-        inputs=[agent_dir_input, scripts_dir_input],
-        outputs=[agent_dir_state, scripts_dir_state, agent_dropdown, scripts_dropdown, version_dropdown, settings_visible, settings_modal]
+        inputs=[agent_dir_input, agent_pattern_input, scripts_dir_input],
+        outputs=[agent_dir_state, agent_pattern_state, scripts_dir_state, agent_dropdown, scripts_dropdown, version_dropdown, settings_visible, settings_modal]
     )
 
     def refresh_versions(agent_dir_state_val):
@@ -342,8 +375,19 @@ with gr.Blocks() as demo:
         versions = scan_versions(agent_dir_state_val)
         return gr.update(choices=versions)
     
+    def refresh_agents(agent_dir_state_val, agent_pattern_state_val):
+        """Refresh agent list"""
+        agents = scan_agent_scripts(agent_dir_state_val, agent_pattern_state_val)
+        return gr.update(choices=agents, value=agents[0] if agents else None)
+    
+    def run_with_error_check(agent_script, scripts_dir, agent_dir_state_val, scripts_dir_state_val):
+        error_msg = send_and_clear(agent_script, scripts_dir, agent_dir_state_val, scripts_dir_state_val)
+        if error_msg:
+            return error_msg
+        return ""
+    
     run_btn.click(
-        send_and_clear,
+        run_with_error_check,
         inputs=[agent_dropdown, scripts_dropdown, agent_dir_state, scripts_dir_state],
         outputs=[output_logs]
     ).then(
@@ -354,6 +398,10 @@ with gr.Blocks() as demo:
         refresh_versions,
         inputs=[agent_dir_state],
         outputs=[version_dropdown]
+    ).then(
+        refresh_agents,
+        inputs=[agent_dir_state, agent_pattern_state],
+        outputs=[agent_dropdown]
     )
 
     reset_btn.click(
