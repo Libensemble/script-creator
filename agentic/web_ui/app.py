@@ -56,11 +56,9 @@ class Session:
     async def run_agent(self, agent_script, scripts_dir, ws, agent_dir=None):
         await self._log(ws, f"started: {agent_script} --scripts {scripts_dir}")
 
-        # Use configured agent_dir or default
         run_dir = Path(agent_dir) if agent_dir else AGENT_DIR
         cmd = [sys.executable, agent_script, "--scripts", scripts_dir]
 
-        # Clear queue
         while not self.output_queue.empty():
             try:
                 self.output_queue.get_nowait()
@@ -69,7 +67,7 @@ class Session:
 
         thread = threading.Thread(
             target=self._subprocess_thread,
-            args=(cmd, str(run_dir)),  # Run from configured directory
+            args=(cmd, str(run_dir)),
             daemon=True
         )
         thread.start()

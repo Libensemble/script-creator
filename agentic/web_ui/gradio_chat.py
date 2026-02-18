@@ -60,6 +60,24 @@ def scan_script_dirs(scripts_dir_path):
         return []
 
 
+def scan_versions(agent_dir_path):
+    """Scan for version directories in generated_scripts/versions/"""
+    try:
+        if not agent_dir_path:
+            return ["latest"]
+        agent_dir = Path(agent_dir_path)
+        versions_dir = agent_dir / "generated_scripts" / "versions"
+        if not versions_dir.exists():
+            return ["latest"]
+        versions = ["latest"] + [d.name for d in sorted(versions_dir.iterdir(), reverse=True) if d.is_dir() and not d.name.startswith("_")]
+        return versions
+    except Exception as e:
+        print(f"Error scanning versions: {e}")
+        import traceback
+        traceback.print_exc()
+        return ["latest"]
+
+
 
 
 def websocket_worker():
@@ -99,6 +117,7 @@ def websocket_worker():
 
 _init_agents = scan_agent_scripts(str(DEFAULT_AGENT_DIR))
 _init_tests = scan_script_dirs(str(DEFAULT_TESTS_DIR))
+_init_versions = scan_versions(str(DEFAULT_AGENT_DIR))
 
 with gr.Blocks() as demo:
     with gr.Row():
@@ -137,6 +156,11 @@ with gr.Blocks() as demo:
     with gr.Row():
         output_logs = gr.Textbox(label="Logs", lines=20)
         with gr.Column():
+            version_dropdown = gr.Dropdown(
+                label="libE scripts",
+                choices=_init_versions,
+                value="latest"
+            )
             script_file_dropdown = gr.Dropdown(label="Generated Scripts", choices=[], value=None)
             output_script = gr.Code(label="Script Content", language="python", lines=10)
             output_plot = gr.Image(label="Plot", visible=False)
@@ -215,23 +239,23 @@ with gr.Blocks() as demo:
         
         agent_choices = scan_agent_scripts(new_agent_dir)
         scripts_choices = scan_script_dirs(new_scripts_dir)
+        version_choices = scan_versions(new_agent_dir)
         
         return (
             new_agent_dir,
             new_scripts_dir,
             gr.update(choices=agent_choices, value=agent_choices[0] if agent_choices else None),
             gr.update(choices=scripts_choices, value=None),
+            gr.update(choices=version_choices, value="latest"),
             False,  # settings_visible - close modal
             gr.update(visible=False)  # settings_modal
         )
     
     def send_and_clear(agent_script, scripts_dir, agent_dir_state_val, scripts_dir_state_val):
         if agent_script and scripts_dir:
-            # Use configured directories
             agent_dir = Path(agent_dir_state_val) if agent_dir_state_val else DEFAULT_AGENT_DIR
             scripts_base_dir = Path(scripts_dir_state_val) if scripts_dir_state_val else DEFAULT_TESTS_DIR
             
-            # Convert directory name to full path
             if not Path(scripts_dir).is_absolute():
                 scripts_dir = str(scripts_base_dir / scripts_dir)
             
@@ -241,12 +265,30 @@ with gr.Blocks() as demo:
                 except Empty:
                     break
             msg = json.dumps({
-                "agent_script": agent_script,  # Just the filename
+                "agent_script": agent_script,
                 "scripts_dir": scripts_dir,
-                "agent_dir": str(agent_dir)  # Send agent dir so backend knows where to run from
+                "agent_dir": str(agent_dir)
             })
             message_queue.put(msg)
         return ""
+    
+    def load_version_scripts(version, agent_dir_state_val):
+        """Load scripts directly from a version directory"""
+        agent_dir = Path(agent_dir_state_val) if agent_dir_state_val else DEFAULT_AGENT_DIR
+        if version and version != "latest":
+            scripts_dir = agent_dir / "generated_scripts" / "versions" / version
+        else:
+            scripts_dir = agent_dir / "generated_scripts"
+
+        scripts = {}
+        if scripts_dir.exists():
+            for f in sorted(scripts_dir.glob("*.py")):
+                scripts[f.name] = f.read_text()
+
+        names = list(scripts.keys())
+        selected = names[0] if names else None
+        content = scripts.get(selected, "") if selected else ""
+        return scripts, gr.update(choices=names, value=selected), content
 
     def reset_ui():
         while not output_queue.empty():
@@ -292,9 +334,14 @@ with gr.Blocks() as demo:
     apply_settings_btn.click(
         apply_settings,
         inputs=[agent_dir_input, scripts_dir_input],
-        outputs=[agent_dir_state, scripts_dir_state, agent_dropdown, scripts_dropdown, settings_visible, settings_modal]
+        outputs=[agent_dir_state, scripts_dir_state, agent_dropdown, scripts_dropdown, version_dropdown, settings_visible, settings_modal]
     )
 
+    def refresh_versions(agent_dir_state_val):
+        """Refresh version list"""
+        versions = scan_versions(agent_dir_state_val)
+        return gr.update(choices=versions)
+    
     run_btn.click(
         send_and_clear,
         inputs=[agent_dropdown, scripts_dropdown, agent_dir_state, scripts_dir_state],
@@ -303,6 +350,10 @@ with gr.Blocks() as demo:
         process_messages,
         inputs=[scripts_dict],
         outputs=[output_logs, scripts_dict, script_file_dropdown, output_script]
+    ).then(
+        refresh_versions,
+        inputs=[agent_dir_state],
+        outputs=[version_dropdown]
     )
 
     reset_btn.click(
@@ -314,6 +365,12 @@ with gr.Blocks() as demo:
         update_script_display,
         inputs=[script_file_dropdown, scripts_dict],
         outputs=output_script
+    )
+    
+    version_dropdown.change(
+        load_version_scripts,
+        inputs=[version_dropdown, agent_dir_state],
+        outputs=[scripts_dict, script_file_dropdown, output_script]
     )
 
 
