@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -9,32 +10,102 @@ from pathlib import Path
 from queue import Queue, Empty
 
 import gradio as gr
+import requests
 import websockets
 
 WS_URL = "ws://127.0.0.1:8000/ws/test"
 DEFAULT_AGENT_DIR = Path(__file__).parent.parent
+ALCF_API_BASE = "https://inference-api.alcf.anl.gov"
+ALCF_ENDPOINTS_URL = f"{ALCF_API_BASE}/resource_server/list-endpoints"
 
-def _get_model_name():
-    import os
+
+def _fetch_models():
+    """Fetch available models. Uses ALCF list-endpoints for ALCF, or /v1/models for OpenAI.
+    Returns (choices, model_map, error_or_none).
+    model_map: label -> (model_name, base_url)
+    """
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "")
+
+    if not api_key:
+        return [], {}, "No OPENAI_API_KEY set"
+
+    # ALCF: use their list-endpoints API (returns models grouped by cluster)
+    if "alcf" in base_url.lower():
+        try:
+            resp = requests.get(
+                ALCF_ENDPOINTS_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            if resp.status_code in (401, 403):
+                return [], {}, "Auth failed — token may be expired"
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException as e:
+            return [], {}, f"Cannot reach ALCF API: {e}"
+
+        skip = {"embed", "genslm"}
+        choices = []
+        model_map = {}
+        for cluster, info in data.get("clusters", {}).items():
+            cluster_url = f"{ALCF_API_BASE}{info['base_url']}/api/v1"
+            for fw in info.get("frameworks", {}).values():
+                if "/v1/chat/completions" not in fw.get("endpoints", []):
+                    continue
+                for model in fw.get("models", []):
+                    if any(s in model.lower() for s in skip):
+                        continue
+                    label = f"{model} ({cluster})"
+                    choices.append(label)
+                    model_map[label] = (model, cluster_url)
+        return sorted(choices), model_map, None
+
+    # Any other OpenAI-compatible endpoint: query /v1/models
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url or None)
+        models = client.models.list()
+        source = "OpenAI" if not base_url else base_url.split("//")[-1].split("/")[0]
+        skip = {"embed", "tts", "whisper", "dall-e", "davinci", "babbage", "moderation"}
+        choices = []
+        model_map = {}
+        for m in sorted(models.data, key=lambda x: x.id):
+            if any(s in m.id.lower() for s in skip):
+                continue
+            label = f"{m.id} ({source})"
+            choices.append(label)
+            model_map[label] = (m.id, base_url)
+        return choices, model_map, None
+    except Exception as e:
+        msg = str(e)
+        if "401" in msg or "invalid" in msg.lower() or "api key" in msg.lower():
+            return [], {}, "Invalid API key for this endpoint"
+        return [], {}, f"Cannot fetch models: {type(e).__name__}"
+
+
+def _current_model_label():
+    """Label for the currently configured model."""
     model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
     base = os.environ.get("OPENAI_BASE_URL", "")
-    if "alcf" in base.lower():
-        return f"{model} (ALCF)"
+    if "metis" in base:
+        return f"{model} (metis)"
+    elif "sophia" in base:
+        return f"{model} (sophia)"
+    elif "alcf" in base.lower():
+        return f"{model} (alcf)"
     elif base:
-        return f"{model} ({base.split('//')[1].split('/')[0]})"
+        return f"{model} (custom)"
     return f"{model} (OpenAI)"
 
 
-def _check_api():
+def _check_api(model=None, base_url=None):
     """Quick API check. Returns None on success, or an error message string."""
-    import os
     from openai import OpenAI
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    model = model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    base_url = base_url or os.environ.get("OPENAI_BASE_URL")
     try:
-        client = OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            base_url=os.environ.get("OPENAI_BASE_URL"),
-        )
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), base_url=base_url)
         client.chat.completions.create(
             model=model, messages=[{"role": "user", "content": "hi"}], max_tokens=1
         )
@@ -42,7 +113,7 @@ def _check_api():
     except Exception as e:
         msg = str(e)
         if "403" in msg or "Permission" in msg.lower():
-            return (f"⚠️ API auth failed ({model}). Token likely expired.\n\n"
+            return ("⚠️ API auth failed. Token likely expired.\n\n"
                     "```\npython3 inference_auth_token.py authenticate --force\n"
                     "export OPENAI_API_KEY=$(python inference_auth_token.py get_access_token)\n```\n\n"
                     "Then restart the UI.")
@@ -50,6 +121,8 @@ def _check_api():
             return f"⚠️ Invalid API key for {model}. Check OPENAI_API_KEY."
         else:
             return f"⚠️ API check failed ({model}): {e}"
+
+
 DEFAULT_TESTS_DIR = DEFAULT_AGENT_DIR / "tests"
 DEFAULT_AGENT_PATTERN = "libe_agent*.py"
 NONE_OPTION = "(none)"
@@ -142,15 +215,46 @@ _init_agents = scan_agent_scripts(str(DEFAULT_AGENT_DIR))
 _init_tests = scan_script_dirs(str(DEFAULT_TESTS_DIR))
 _init_versions = scan_versions(str(DEFAULT_AGENT_DIR))
 
+# Determine endpoint label for title
+_cur_base = os.environ.get("OPENAI_BASE_URL", "")
+if "metis" in _cur_base:
+    _endpoint_label = "ALCF Metis"
+elif "sophia" in _cur_base:
+    _endpoint_label = "ALCF Sophia"
+elif "alcf" in _cur_base.lower():
+    _endpoint_label = "ALCF"
+elif _cur_base:
+    _endpoint_label = _cur_base.split("//")[-1].split("/")[0]
+else:
+    _endpoint_label = "OpenAI"
+
+# Fetch available models (one quick call at startup)
+_init_model_label = _current_model_label()
+_cur_model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+_init_model_choices, _init_model_map, _init_model_err = _fetch_models()
+if _init_model_label not in _init_model_map:
+    _init_model_choices = [_init_model_label] + _init_model_choices
+    _init_model_map[_init_model_label] = (_cur_model, _cur_base)
+if not _init_model_choices:
+    _init_model_choices = [_init_model_label]
+if _init_model_err:
+    print(f"⚠ Model fetch: {_init_model_err}")
+    print(f"  Check OPENAI_API_KEY and OPENAI_BASE_URL match the same service.")
+
 with gr.Blocks() as demo:
     with gr.Row():
-        gr.Markdown(f"### libEnsemble Agent &nbsp; · &nbsp; `{_get_model_name()}`")
+        gr.Markdown(f"### libEnsemble Agent &nbsp; · &nbsp; `{_endpoint_label}`")
+        model_dropdown = gr.Dropdown(
+            choices=_init_model_choices, value=_init_model_label,
+            show_label=False, allow_custom_value=True, scale=2, min_width=300
+        )
         with gr.Column(scale=0, min_width=60):
-            settings_btn = gr.Button("⚙️", size="sm")
+            settings_btn = gr.Button("⚙️")
 
     agent_dir_state = gr.State(value=str(DEFAULT_AGENT_DIR))
     scripts_dir_state = gr.State(value=str(DEFAULT_TESTS_DIR))
     agent_pattern_state = gr.State(value=DEFAULT_AGENT_PATTERN)
+    model_map_state = gr.State(value=_init_model_map)
     settings_visible = gr.State(value=False)
 
     with gr.Column(visible=False) as settings_modal:
@@ -210,14 +314,22 @@ with gr.Blocks() as demo:
 
     # --- Core event handlers ---
 
-    def start_run(agent_script, scripts_dir, history, agent_dir_val, scripts_dir_val):
+    def start_run(agent_script, scripts_dir, history, agent_dir_val, scripts_dir_val,
+                  model_label, model_map):
         """Send run command and add user message to chat"""
         if not agent_script:
             history = history + [{"role": "assistant", "content": "⚠️ No agent script selected"}]
             return history
 
-        # Preflight API check
-        api_err = _check_api()
+        # Resolve model from dropdown selection
+        if model_label and model_label in model_map:
+            sel_model, sel_base_url = model_map[model_label]
+        else:
+            sel_model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+            sel_base_url = os.environ.get("OPENAI_BASE_URL", "")
+
+        # Preflight API check with selected model
+        api_err = _check_api(model=sel_model, base_url=sel_base_url or None)
         if api_err:
             history = history + [{"role": "assistant", "content": api_err}]
             return history
@@ -245,7 +357,9 @@ with gr.Blocks() as demo:
             "type": "run",
             "agent_script": agent_script,
             "scripts_dir": resolved,
-            "agent_dir": str(agent_dir)
+            "agent_dir": str(agent_dir),
+            "llm_model": sel_model,
+            "openai_base_url": sel_base_url,
         }))
         return history
 
@@ -370,7 +484,8 @@ with gr.Blocks() as demo:
     # Run button: start script → stream output → refresh versions → load scripts
     run_btn.click(
         start_run,
-        inputs=[agent_dropdown, scripts_dropdown, chatbot, agent_dir_state, scripts_dir_state],
+        inputs=[agent_dropdown, scripts_dropdown, chatbot, agent_dir_state, scripts_dir_state,
+                model_dropdown, model_map_state],
         outputs=[chatbot]
     ).then(
         stream_output, inputs=[chatbot], outputs=[chatbot]

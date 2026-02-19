@@ -45,8 +45,11 @@ class Session:
             except Exception as e:
                 self.output_queue.put(("error", f"Failed to send input: {e}"))
 
-    def _subprocess_thread(self, cmd, cwd):
+    def _subprocess_thread(self, cmd, cwd, env_overrides=None):
         try:
+            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            if env_overrides:
+                env.update(env_overrides)
             self.process = subprocess.Popen(
                 cmd,
                 cwd=cwd,
@@ -55,7 +58,7 @@ class Session:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"}
+                env=env,
             )
             for line in self.process.stdout:
                 self.output_queue.put(("line", line.rstrip()))
@@ -66,7 +69,8 @@ class Session:
         finally:
             self.process = None
 
-    async def run_agent(self, agent_script, scripts_dir, ws, agent_dir=None):
+    async def run_agent(self, agent_script, scripts_dir, ws, agent_dir=None,
+                        llm_model=None, openai_base_url=None):
         run_dir = Path(agent_dir) if agent_dir else AGENT_DIR
         cmd = [sys.executable, agent_script]
 
@@ -86,9 +90,17 @@ class Session:
             except Empty:
                 break
 
+        # Pass selected model to subprocess
+        env_overrides = {}
+        if llm_model:
+            env_overrides["LLM_MODEL"] = llm_model
+        if openai_base_url:
+            env_overrides["OPENAI_BASE_URL"] = openai_base_url
+
         thread = threading.Thread(
             target=self._subprocess_thread,
             args=(cmd, str(run_dir)),
+            kwargs={"env_overrides": env_overrides or None},
             daemon=True
         )
         thread.start()
@@ -138,7 +150,9 @@ async def ws_endpoint(ws: WebSocket, session_id: str):
                         msg.get("agent_script", ""),
                         msg.get("scripts_dir") or "",
                         ws,
-                        agent_dir=msg.get("agent_dir")
+                        agent_dir=msg.get("agent_dir"),
+                        llm_model=msg.get("llm_model"),
+                        openai_base_url=msg.get("openai_base_url"),
                     )
                 )
     except WebSocketDisconnect:
