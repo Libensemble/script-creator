@@ -367,7 +367,7 @@ with gr.Blocks() as demo:
                  settings_visible, settings_modal]
     )
 
-    # Run button: start script → stream output → refresh versions
+    # Run button: start script → stream output → refresh versions → load scripts
     run_btn.click(
         start_run,
         inputs=[agent_dropdown, scripts_dropdown, chatbot, agent_dir_state, scripts_dir_state],
@@ -376,6 +376,9 @@ with gr.Blocks() as demo:
         stream_output, inputs=[chatbot], outputs=[chatbot]
     ).then(
         refresh_versions, inputs=[agent_dir_state], outputs=[version_dropdown]
+    ).then(
+        load_version_scripts, inputs=[version_dropdown, agent_dir_state],
+        outputs=[scripts_dict, script_file_dropdown, output_script]
     )
 
     # Chat input: send to stdin → stream continued output
@@ -385,6 +388,9 @@ with gr.Blocks() as demo:
         stream_output, inputs=[chatbot], outputs=[chatbot]
     ).then(
         refresh_versions, inputs=[agent_dir_state], outputs=[version_dropdown]
+    ).then(
+        load_version_scripts, inputs=[version_dropdown, agent_dir_state],
+        outputs=[scripts_dict, script_file_dropdown, output_script]
     )
     chat_input.submit(
         send_user_input, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]
@@ -392,6 +398,9 @@ with gr.Blocks() as demo:
         stream_output, inputs=[chatbot], outputs=[chatbot]
     ).then(
         refresh_versions, inputs=[agent_dir_state], outputs=[version_dropdown]
+    ).then(
+        load_version_scripts, inputs=[version_dropdown, agent_dir_state],
+        outputs=[scripts_dict, script_file_dropdown, output_script]
     )
 
     # Reset
