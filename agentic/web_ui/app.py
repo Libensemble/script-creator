@@ -11,13 +11,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 app = FastAPI()
 
-AGENT_DIR = Path(__file__).parent.parent  # Go up from web_ui/ to agentic/
+AGENT_DIR = Path(__file__).parent.parent
 GENERATED_SCRIPTS_DIR = AGENT_DIR / "generated_scripts"
 
 
 class Session:
     def __init__(self):
         self.output_queue = Queue()
+        self.process = None
 
     async def _send(self, ws, msg):
         await ws.send_text(json.dumps(msg))
@@ -35,29 +36,49 @@ class Session:
                 "content": f.read_text()
             })
 
+    def send_input(self, text):
+        """Send text to the running process's stdin"""
+        if self.process and self.process.stdin:
+            try:
+                self.process.stdin.write(text + "\n")
+                self.process.stdin.flush()
+            except Exception as e:
+                self.output_queue.put(("error", f"Failed to send input: {e}"))
+
     def _subprocess_thread(self, cmd, cwd):
         try:
-            process = subprocess.Popen(
+            self.process = subprocess.Popen(
                 cmd,
                 cwd=cwd,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"}
             )
-            for line in process.stdout:
+            for line in self.process.stdout:
                 self.output_queue.put(("line", line.rstrip()))
-            process.wait()
-            self.output_queue.put(("exit", process.returncode))
+            self.process.wait()
+            self.output_queue.put(("exit", self.process.returncode))
         except Exception as e:
             self.output_queue.put(("error", str(e)))
+        finally:
+            self.process = None
 
     async def run_agent(self, agent_script, scripts_dir, ws, agent_dir=None):
-        await self._log(ws, f"started: {agent_script} --scripts {scripts_dir}")
-
         run_dir = Path(agent_dir) if agent_dir else AGENT_DIR
-        cmd = [sys.executable, agent_script, "--scripts", scripts_dir]
+        cmd = [sys.executable, agent_script]
+
+        # Add --interactive if the script supports it
+        if "interactive" in agent_script.lower():
+            cmd.append("--interactive")
+
+        # Add --scripts only if provided
+        if scripts_dir:
+            cmd.extend(["--scripts", scripts_dir])
+
+        await self._log(ws, f"started: {' '.join(cmd)}")
 
         while not self.output_queue.empty():
             try:
@@ -100,14 +121,26 @@ sessions: dict[str, Session] = {}
 async def ws_endpoint(ws: WebSocket, session_id: str):
     await ws.accept()
     s = sessions.setdefault(session_id, Session())
+    agent_task = None
     try:
         while True:
             raw = await ws.receive_text()
             msg = json.loads(raw)
-            agent_script = msg.get("agent_script", "libe_agent_basic.py")
-            scripts_dir = msg.get("scripts_dir", "")
-            agent_dir = msg.get("agent_dir", None)
-            if scripts_dir:
-                await s.run_agent(agent_script, scripts_dir, ws, agent_dir=agent_dir)
+
+            if msg.get("type") == "input":
+                s.send_input(msg.get("text", ""))
+            else:
+                # Run agent as background task so we can keep receiving input
+                if agent_task and not agent_task.done():
+                    agent_task.cancel()
+                agent_task = asyncio.create_task(
+                    s.run_agent(
+                        msg.get("agent_script", ""),
+                        msg.get("scripts_dir") or "",
+                        ws,
+                        agent_dir=msg.get("agent_dir")
+                    )
+                )
     except WebSocketDisconnect:
-        pass
+        if agent_task and not agent_task.done():
+            agent_task.cancel()
