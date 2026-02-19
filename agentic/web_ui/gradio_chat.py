@@ -30,7 +30,7 @@ def _fetch_models():
     if not api_key:
         return [], {}, "No OPENAI_API_KEY set"
 
-    # ALCF: use their list-endpoints API (returns models grouped by cluster)
+    # ALCF: use list-endpoints to get registered models per cluster
     if "alcf" in base_url.lower():
         try:
             resp = requests.get(
@@ -49,10 +49,10 @@ def _fetch_models():
         choices = []
         model_map = {}
         for cluster, info in data.get("clusters", {}).items():
-            cluster_url = f"{ALCF_API_BASE}{info['base_url']}/api/v1"
-            for fw in info.get("frameworks", {}).values():
+            for fw_name, fw in info.get("frameworks", {}).items():
                 if "/v1/chat/completions" not in fw.get("endpoints", []):
                     continue
+                cluster_url = f"{ALCF_API_BASE}{info['base_url']}/{fw_name}/v1"
                 for model in fw.get("models", []):
                     if any(s in model.lower() for s in skip):
                         continue
@@ -215,18 +215,14 @@ _init_agents = scan_agent_scripts(str(DEFAULT_AGENT_DIR))
 _init_tests = scan_script_dirs(str(DEFAULT_TESTS_DIR))
 _init_versions = scan_versions(str(DEFAULT_AGENT_DIR))
 
-# Determine endpoint label for title
+# Determine service label for title
 _cur_base = os.environ.get("OPENAI_BASE_URL", "")
-if "metis" in _cur_base:
-    _endpoint_label = "ALCF Metis"
-elif "sophia" in _cur_base:
-    _endpoint_label = "ALCF Sophia"
-elif "alcf" in _cur_base.lower():
-    _endpoint_label = "ALCF"
+if "alcf" in _cur_base.lower():
+    _service_label = "ALCF"
 elif _cur_base:
-    _endpoint_label = _cur_base.split("//")[-1].split("/")[0]
+    _service_label = _cur_base.split("//")[-1].split("/")[0]
 else:
-    _endpoint_label = "OpenAI"
+    _service_label = "OpenAI"
 
 # Fetch available models (one quick call at startup)
 _init_model_label = _current_model_label()
@@ -243,7 +239,7 @@ if _init_model_err:
 
 with gr.Blocks() as demo:
     with gr.Row():
-        gr.Markdown(f"### libEnsemble Agent &nbsp; · &nbsp; `{_endpoint_label}`")
+        gr.Markdown(f"### libEnsemble Agent &nbsp; · &nbsp; Service: `{_service_label}`")
         model_dropdown = gr.Dropdown(
             choices=_init_model_choices, value=_init_model_label,
             show_label=False, allow_custom_value=True, scale=2, min_width=300
