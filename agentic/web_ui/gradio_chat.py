@@ -17,77 +17,122 @@ WS_URL = "ws://127.0.0.1:8000/ws/test"
 DEFAULT_AGENT_DIR = Path(__file__).parent.parent
 ALCF_API_BASE = "https://inference-api.alcf.anl.gov"
 ALCF_ENDPOINTS_URL = f"{ALCF_API_BASE}/resource_server/list-endpoints"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+
+
+def _default_model():
+    """Pick default model based on which API key is available."""
+    if os.environ.get("LLM_MODEL"):
+        return os.environ["LLM_MODEL"]
+    if os.environ.get("OPENAI_API_KEY") or not os.environ.get("ANTHROPIC_API_KEY"):
+        return DEFAULT_OPENAI_MODEL
+    return DEFAULT_ANTHROPIC_MODEL
 
 
 def _fetch_models():
-    """Fetch available models. Uses ALCF list-endpoints for ALCF, or /v1/models for OpenAI.
+    """Fetch available models from all configured services.
+    Supports ALCF, OpenAI-compatible, and Anthropic endpoints.
     Returns (choices, model_map, error_or_none).
     model_map: label -> (model_name, base_url)
     """
     api_key = os.environ.get("OPENAI_API_KEY", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     base_url = os.environ.get("OPENAI_BASE_URL", "")
 
-    if not api_key:
-        return [], {}, "No OPENAI_API_KEY set"
+    if not api_key and not anthropic_key:
+        return [], {}, "No API keys set (OPENAI_API_KEY or ANTHROPIC_API_KEY)"
 
-    # ALCF: use list-endpoints to get registered models per cluster
-    if "alcf" in base_url.lower():
+    choices = []
+    model_map = {}
+    errors = []
+
+    # --- OpenAI / ALCF ---
+    if api_key:
+        if "alcf" in base_url.lower():
+            try:
+                resp = requests.get(
+                    ALCF_ENDPOINTS_URL,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10,
+                )
+                if resp.status_code in (401, 403):
+                    errors.append("ALCF: auth failed — token may be expired")
+                else:
+                    resp.raise_for_status()
+                    data = resp.json()
+                    skip = {"embed", "genslm"}
+                    for cluster, info in data.get("clusters", {}).items():
+                        for fw_name, fw in info.get("frameworks", {}).items():
+                            if "/v1/chat/completions" not in fw.get("endpoints", []):
+                                continue
+                            cluster_url = f"{ALCF_API_BASE}{info['base_url']}/{fw_name}/v1"
+                            for model in fw.get("models", []):
+                                if any(s in model.lower() for s in skip):
+                                    continue
+                                label = f"{model} ({cluster})"
+                                choices.append(label)
+                                model_map[label] = (model, cluster_url)
+            except requests.RequestException as e:
+                errors.append(f"Cannot reach ALCF API: {e}")
+        else:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=api_key, base_url=base_url or None)
+                models = client.models.list()
+                source = "OpenAI" if not base_url else base_url.split("//")[-1].split("/")[0]
+                skip = {"embed", "tts", "whisper", "dall-e", "davinci", "babbage", "moderation"}
+                for m in sorted(models.data, key=lambda x: x.id):
+                    if any(s in m.id.lower() for s in skip):
+                        continue
+                    label = f"{m.id} ({source})"
+                    choices.append(label)
+                    model_map[label] = (m.id, base_url)
+            except Exception as e:
+                msg = str(e)
+                if "401" in msg or "invalid" in msg.lower() or "api key" in msg.lower():
+                    errors.append("OpenAI: invalid API key")
+                else:
+                    errors.append(f"OpenAI: cannot fetch models ({type(e).__name__})")
+
+    # --- Anthropic ---
+    if anthropic_key:
         try:
             resp = requests.get(
-                ALCF_ENDPOINTS_URL,
-                headers={"Authorization": f"Bearer {api_key}"},
+                "https://api.anthropic.com/v1/models?limit=100",
+                headers={
+                    "x-api-key": anthropic_key,
+                    "anthropic-version": "2023-06-01",
+                },
                 timeout=10,
             )
             if resp.status_code in (401, 403):
-                return [], {}, "Auth failed — token may be expired"
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.RequestException as e:
-            return [], {}, f"Cannot reach ALCF API: {e}"
-
-        skip = {"embed", "genslm"}
-        choices = []
-        model_map = {}
-        for cluster, info in data.get("clusters", {}).items():
-            for fw_name, fw in info.get("frameworks", {}).items():
-                if "/v1/chat/completions" not in fw.get("endpoints", []):
-                    continue
-                cluster_url = f"{ALCF_API_BASE}{info['base_url']}/{fw_name}/v1"
-                for model in fw.get("models", []):
-                    if any(s in model.lower() for s in skip):
-                        continue
-                    label = f"{model} ({cluster})"
+                errors.append("Anthropic: auth failed — check ANTHROPIC_API_KEY")
+            else:
+                resp.raise_for_status()
+                data = resp.json()
+                for m in sorted(data.get("data", []), key=lambda x: x.get("id", "")):
+                    mid = m.get("id", "")
+                    label = f"{mid} (Anthropic)"
                     choices.append(label)
-                    model_map[label] = (model, cluster_url)
-        return sorted(choices), model_map, None
+                    model_map[label] = (mid, "")
+        except requests.RequestException as e:
+            errors.append(f"Anthropic: cannot fetch models ({e})")
 
-    # Any other OpenAI-compatible endpoint: query /v1/models
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url or None)
-        models = client.models.list()
-        source = "OpenAI" if not base_url else base_url.split("//")[-1].split("/")[0]
-        skip = {"embed", "tts", "whisper", "dall-e", "davinci", "babbage", "moderation"}
-        choices = []
-        model_map = {}
-        for m in sorted(models.data, key=lambda x: x.id):
-            if any(s in m.id.lower() for s in skip):
-                continue
-            label = f"{m.id} ({source})"
-            choices.append(label)
-            model_map[label] = (m.id, base_url)
-        return choices, model_map, None
-    except Exception as e:
-        msg = str(e)
-        if "401" in msg or "invalid" in msg.lower() or "api key" in msg.lower():
-            return [], {}, "Invalid API key for this endpoint"
-        return [], {}, f"Cannot fetch models: {type(e).__name__}"
+    if not choices and errors:
+        return [], {}, "; ".join(errors)
+    if errors:
+        for e in errors:
+            print(f"⚠ Model fetch: {e}")
+    return sorted(choices), model_map, None
 
 
 def _current_model_label():
     """Label for the currently configured model."""
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    model = _default_model()
     base = os.environ.get("OPENAI_BASE_URL", "")
+    if "claude" in model.lower():
+        return f"{model} (Anthropic)"
     if "metis" in base:
         return f"{model} (metis)"
     elif "sophia" in base:
@@ -101,9 +146,33 @@ def _current_model_label():
 
 def _check_api(model=None, base_url=None):
     """Quick API check. Returns None on success, or an error message string."""
-    from openai import OpenAI
-    model = model or os.environ.get("LLM_MODEL", "gpt-4o-mini")
+    model = model or _default_model()
     base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+
+    if "claude" in model.lower():
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            return "⚠️ ANTHROPIC_API_KEY not set. Required for Claude models."
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+                timeout=15,
+            )
+            if resp.ok:
+                return None
+            if resp.status_code in (401, 403):
+                return "⚠️ Anthropic auth failed. Check ANTHROPIC_API_KEY."
+            return f"⚠️ Anthropic API check failed ({model}): {resp.status_code}"
+        except Exception as e:
+            return f"⚠️ Anthropic API check failed: {e}"
+
+    from openai import OpenAI
     try:
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"), base_url=base_url)
         client.chat.completions.create(
@@ -217,16 +286,22 @@ _init_versions = scan_versions(str(DEFAULT_AGENT_DIR))
 
 # Determine service label for title
 _cur_base = os.environ.get("OPENAI_BASE_URL", "")
+_has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+_has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
 if "alcf" in _cur_base.lower():
     _service_label = "ALCF"
 elif _cur_base:
     _service_label = _cur_base.split("//")[-1].split("/")[0]
-else:
+elif _has_openai:
     _service_label = "OpenAI"
+else:
+    _service_label = ""
+if _has_anthropic:
+    _service_label = f"{_service_label} + Anthropic" if _service_label else "Anthropic"
 
 # Fetch available models (one quick call at startup)
 _init_model_label = _current_model_label()
-_cur_model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+_cur_model = _default_model()
 _init_model_choices, _init_model_map, _init_model_err = _fetch_models()
 if _init_model_label not in _init_model_map:
     _init_model_choices = [_init_model_label] + _init_model_choices
@@ -235,7 +310,7 @@ if not _init_model_choices:
     _init_model_choices = [_init_model_label]
 if _init_model_err:
     print(f"⚠ Model fetch: {_init_model_err}")
-    print(f"  Check OPENAI_API_KEY and OPENAI_BASE_URL match the same service.")
+    print(f"  Check API keys (OPENAI_API_KEY / ANTHROPIC_API_KEY) and OPENAI_BASE_URL.")
 
 with gr.Blocks() as demo:
     with gr.Row():
@@ -321,7 +396,7 @@ with gr.Blocks() as demo:
         if model_label and model_label in model_map:
             sel_model, sel_base_url = model_map[model_label]
         else:
-            sel_model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+            sel_model = _default_model()
             sel_base_url = os.environ.get("OPENAI_BASE_URL", "")
 
         # Preflight API check with selected model

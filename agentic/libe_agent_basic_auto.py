@@ -27,9 +27,26 @@ from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
 
 
-# OpenAI model to use
-DEFAULT_MODEL = "gpt-4o-mini"
-MODEL = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+# LLM model to use — default depends on which API key is available
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+if os.environ.get("LLM_MODEL"):
+    MODEL = os.environ["LLM_MODEL"]
+elif os.environ.get("OPENAI_API_KEY") or not os.environ.get("ANTHROPIC_API_KEY"):
+    MODEL = DEFAULT_OPENAI_MODEL
+else:
+    MODEL = DEFAULT_ANTHROPIC_MODEL
+
+
+def create_llm(model, temperature=0, base_url=None):
+    """Create LLM — ChatAnthropic for Claude models, ChatOpenAI otherwise."""
+    if "claude" in model.lower():
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            sys.exit("Error: pip install langchain-anthropic required for Claude models")
+        return ChatAnthropic(model=model, temperature=temperature)
+    return ChatOpenAI(model=model, temperature=temperature, base_url=base_url)
 
 # Working directory for scripts
 WORK_DIR = None
@@ -277,11 +294,7 @@ async def main():
     )
     
     # Create agent
-    llm = ChatOpenAI(
-        model=MODEL,
-        temperature=0,
-        base_url=os.environ.get("OPENAI_BASE_URL"),
-    )
+    llm = create_llm(MODEL, base_url=os.environ.get("OPENAI_BASE_URL"))
     agent = create_agent(llm, [run_tool, read_tool, write_tool, list_tool])
     
     # Give agent the goal

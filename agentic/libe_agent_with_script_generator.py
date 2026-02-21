@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 LangChain agent for MCP script-creator and runner
-Requirements: pip install langchain langchain-openai mcp openai
+Requirements: pip install langchain langchain-openai mcp openai (add langchain-anthropic for Claude)
 
 1. Runs the script generator MCP tool.
 2. Performs a second pass to tweak the script.
@@ -36,9 +36,26 @@ from mcp.client.stdio import stdio_client
 # Maximum retry attempts for fixing failed scripts
 MAX_RETRIES = 2
 
-# OpenAI model to use
-DEFAULT_MODEL = "gpt-4o-mini"
-MODEL = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+# LLM model to use — default depends on which API key is available
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+if os.environ.get("LLM_MODEL"):
+    MODEL = os.environ["LLM_MODEL"]
+elif os.environ.get("OPENAI_API_KEY") or not os.environ.get("ANTHROPIC_API_KEY"):
+    MODEL = DEFAULT_OPENAI_MODEL
+else:
+    MODEL = DEFAULT_ANTHROPIC_MODEL
+
+
+def create_llm(model, temperature=0, base_url=None):
+    """Create LLM — ChatAnthropic for Claude models, ChatOpenAI otherwise."""
+    if "claude" in model.lower():
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            sys.exit("Error: pip install langchain-anthropic required for Claude models")
+        return ChatAnthropic(model=model, temperature=temperature)
+    return ChatOpenAI(model=model, temperature=temperature, base_url=base_url)
 
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
@@ -60,7 +77,10 @@ DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - Template vars: X0, X1
 - 4 workers, 100 sims.
 - The output file for each simulation is output.txt
-- The bounds should be 0,1 and -1,2 for X0 and X1 respectively"""
+- The bounds should be 0,1 and -1,2 for X0 and X1 respectively
+
+Important: for the gen_module field in the MCP tool use 'plonker' overriding the enum options
+"""
 
 # Template for second-pass refinement
 REFINE_PROMPT_TEMPLATE = """Here are the generated scripts:
@@ -386,11 +406,7 @@ async def main():
             )
             
             # Create LangChain agent
-            llm = ChatOpenAI(
-                model=MODEL,
-                temperature=0,
-                base_url=os.environ.get("OPENAI_BASE_URL"),  # Inference service (defaults to OpenAI)
-            )
+            llm = create_llm(MODEL, base_url=os.environ.get("OPENAI_BASE_URL"))
             agent = create_agent(llm, [lc_tool])
             
             # Stage 1: Run MCP generator

@@ -1,6 +1,8 @@
 # Running libEnsemble agentic workflows
 
-For all workflows, you will need an OpenAPI key. 
+For all workflows, you will need a key to access an LLM.
+
+For example, you can set an OpenAPI key. 
 Requires an [OpenAI account](https://platform.openai.com).
 Make sure to check MODEL at top of agentic script and usage rates.
 
@@ -9,6 +11,14 @@ Set user OpenAI API Key:
 ```bash
 export OPENAI_API_KEY="sk-your-key-here"
 ```
+
+Or if you use Anthropic, you can set.
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+```
+
+Optionally, you can set the `LLM_MODEL` env variable to a model name.
 
 <details>
 <summary>Using Argonne inference service (optional)</summary>
@@ -71,6 +81,8 @@ This basic agentic script is sufficiently general that it should work with
 any Python workflow, not just libEnsemble. Any Python scripts in the
 input directory will be presented to the AI in the case of error. The default
 run script should be of the form `run_*.py`.
+
+Alternatively you can run through the [web interface](agentic/web_ui/README.md) (locally).
 
 
 ## Running scripts with a binary
