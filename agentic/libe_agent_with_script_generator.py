@@ -24,6 +24,7 @@ import re
 import subprocess
 import argparse
 import shutil
+import time
 from pathlib import Path
 from datetime import datetime
 from langchain_openai import ChatOpenAI
@@ -35,6 +36,9 @@ from mcp.client.stdio import stdio_client
 
 # Maximum retry attempts for fixing failed scripts
 MAX_RETRIES = 2
+
+# Directory where existing generated_scripts runs are moved (create if missing)
+ARCHIVE_RUNS_DIR = "archive_runs"
 
 # LLM model to use — default depends on which API key is available
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
@@ -233,6 +237,20 @@ def detect_run_script(directory):
         return None
     return run_scripts[0].name
 
+def archive_existing_output_dir(output_dir, archive_parent=None):
+    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh output_dir."""
+    output_dir = Path(output_dir)
+    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
+    shutil.move(str(output_dir), str(dest))
+    print(f"Moved existing {output_dir} to {dest}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+
 def copy_existing_scripts(scripts_dir, output_dir):
     """Copy scripts from existing directory and return as formatted text"""
     print(f"Using existing scripts from: {scripts_dir}")
@@ -368,7 +386,8 @@ async def main():
     SHOW_PROMPTS = args.show_prompts
     
     output_dir = "generated_scripts"
-    
+    archive_existing_output_dir(output_dir)
+
     # Copy existing scripts if provided
     archive_counter = 1
     if args.scripts:

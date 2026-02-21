@@ -20,6 +20,7 @@ import re
 import subprocess
 import argparse
 import shutil
+import time
 from pathlib import Path
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
@@ -38,6 +39,23 @@ elif os.environ.get("OPENAI_API_KEY") or not os.environ.get("ANTHROPIC_API_KEY")
 else:
     MODEL = DEFAULT_ANTHROPIC_MODEL
 SHOW_PROMPTS = False
+
+# Directory where existing generated_scripts runs are moved (create if missing)
+ARCHIVE_RUNS_DIR = "archive_runs"
+
+
+def archive_existing_output_dir(output_dir, archive_parent=None):
+    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh output_dir."""
+    output_dir = Path(output_dir)
+    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
+    shutil.move(str(output_dir), str(dest))
+    print(f"Moved existing {output_dir} to {dest}")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
 
 def create_llm(model, temperature=0, base_url=None):
@@ -256,8 +274,8 @@ Examples:
 
     SHOW_PROMPTS = args.show_prompts
     interactive = args.interactive
+    archive_existing_output_dir("generated_scripts")
     WORK_DIR = Path("generated_scripts")
-    WORK_DIR.mkdir(exist_ok=True)
 
     # Connect to MCP server
     mcp_server = find_mcp_server(args.mcp_server)

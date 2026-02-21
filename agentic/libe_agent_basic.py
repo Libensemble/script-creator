@@ -20,6 +20,7 @@ import re
 import subprocess
 import argparse
 import shutil
+import time
 from pathlib import Path
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
@@ -51,6 +52,9 @@ def create_llm(model, temperature=0, base_url=None):
 
 # Show prompts flag (set by command line)
 SHOW_PROMPTS = False
+
+# Directory where existing generated_scripts runs are moved (create if missing)
+ARCHIVE_RUNS_DIR = "archive_runs"
 
 # Files and directories to archive after each run
 # Can include directory names and glob patterns (e.g., "*.npy", "ensemble/", "*.log")
@@ -130,6 +134,20 @@ def archive_run_outputs(output_dir, archive_name, error_msg=""):
             for filepath in output_dir.glob(item):
                 if filepath.is_file():
                     shutil.move(str(filepath), str(run_output_dir / filepath.name))
+
+def archive_existing_output_dir(output_dir, archive_parent=None):
+    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh output_dir."""
+    output_dir = Path(output_dir)
+    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
+    shutil.move(str(output_dir), str(dest))
+    print(f"Moved existing {output_dir} to {dest}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
 
 def detect_run_script(directory):
     """Find the run script in directory (first run_*.py file)"""
@@ -225,7 +243,10 @@ async def main():
     
     SHOW_PROMPTS = args.show_prompts
     output_dir = "generated_scripts"
-    
+
+    # If output_dir already exists, move it to archive_runs/generated_scripts_<hash>, then create fresh
+    archive_existing_output_dir(output_dir)
+
     # Copy existing scripts
     current_scripts = copy_existing_scripts(args.scripts, output_dir)
     run_script_name = detect_run_script(output_dir)

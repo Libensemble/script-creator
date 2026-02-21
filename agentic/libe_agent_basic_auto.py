@@ -19,6 +19,7 @@ import asyncio
 import subprocess
 import argparse
 import shutil
+import time
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -57,6 +58,9 @@ ARCHIVE_COUNTER = 1
 # Current archive name (scripts and their output go together)
 CURRENT_ARCHIVE = None
 
+# Directory where existing generated_scripts runs are moved (create if missing)
+ARCHIVE_RUNS_DIR = "archive_runs"
+
 # Files and directories to archive after each run
 ARCHIVE_ITEMS = [
     "ensemble",           # libEnsemble output directory
@@ -65,6 +69,20 @@ ARCHIVE_ITEMS = [
     "*.npy",              # NumPy arrays
     "*.pickle",           # Pickle files
 ]
+
+
+def archive_existing_output_dir(output_dir, archive_parent=None):
+    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh output_dir."""
+    output_dir = Path(output_dir)
+    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
+    shutil.move(str(output_dir), str(dest))
+    print(f"Moved existing {output_dir} to {dest}")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Tool schemas
@@ -227,8 +245,8 @@ def setup_work_directory(scripts_dir: str) -> Path:
     """Copy scripts to working directory and archive initial version"""
     global WORK_DIR
     scripts_dir = Path(scripts_dir)
+    archive_existing_output_dir("generated_scripts")
     work_dir = Path("generated_scripts")
-    work_dir.mkdir(exist_ok=True)
     WORK_DIR = work_dir
     
     # Copy all Python files to work dir
