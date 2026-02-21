@@ -315,12 +315,9 @@ if _init_model_err:
 with gr.Blocks() as demo:
     with gr.Row():
         gr.Markdown(f"### libEnsemble Agent &nbsp; · &nbsp; Service: `{_service_label}`")
-        model_dropdown = gr.Dropdown(
-            choices=_init_model_choices, value=_init_model_label,
-            show_label=False, allow_custom_value=True, scale=2, min_width=300
-        )
-        with gr.Column(scale=0, min_width=60):
-            settings_btn = gr.Button("⚙️")
+        run_btn = gr.Button("Run", variant="primary")
+        reset_btn = gr.Button("Reset", variant="stop")
+        settings_btn = gr.Button("⚙️")
 
     agent_dir_state = gr.State(value=str(DEFAULT_AGENT_DIR))
     scripts_dir_state = gr.State(value=str(DEFAULT_TESTS_DIR))
@@ -348,8 +345,10 @@ with gr.Blocks() as demo:
             label="Scripts Directory", choices=_init_tests,
             value=NONE_OPTION, allow_custom_value=True, scale=2
         )
-        run_btn = gr.Button("Run", variant="primary")
-        reset_btn = gr.Button("Reset", variant="stop")
+        model_dropdown = gr.Dropdown(
+            label="Model", choices=_init_model_choices, value=_init_model_label,
+            allow_custom_value=True, scale=2, min_width=300
+        )
 
     chatbot = gr.Chatbot(label="Agent", height=400)
     with gr.Row():
