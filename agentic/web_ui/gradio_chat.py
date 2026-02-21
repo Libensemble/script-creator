@@ -351,21 +351,23 @@ with gr.Blocks() as demo:
         run_btn = gr.Button("Run", variant="primary")
         reset_btn = gr.Button("Reset", variant="stop")
 
+    chatbot = gr.Chatbot(label="Agent", height=400)
     with gr.Row():
-        with gr.Column(scale=3):
-            chatbot = gr.Chatbot(label="Agent", height=400)
-            with gr.Row():
-                chat_input = gr.Textbox(
-                    placeholder="Type prompt or response here...",
-                    show_label=False, scale=4, lines=1
-                )
-                send_btn = gr.Button("Send", scale=0, min_width=80)
-        with gr.Column(scale=2):
+        chat_input = gr.Textbox(
+            placeholder="Type prompt or response here...",
+            show_label=False, scale=4, lines=1
+        )
+        send_btn = gr.Button("Send", scale=0, min_width=80)
+
+    with gr.Tabs():
+        with gr.Tab("Scripts"):
             version_dropdown = gr.Dropdown(
                 label="libE scripts", choices=_init_versions, value="latest"
             )
             script_file_dropdown = gr.Dropdown(label="Generated Scripts", choices=[], value=None)
             output_script = gr.Code(label="Script Content", language="python", lines=10)
+        with gr.Tab("Graphs"):
+            graphs_placeholder = gr.Markdown("*Graphs will appear here.*")
 
     # --- Helpers ---
 
