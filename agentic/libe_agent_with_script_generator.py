@@ -78,8 +78,6 @@ DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - 4 workers, 100 sims.
 - The output file for each simulation is output.txt
 - The bounds should be 0,1 and -1,2 for X0 and X1 respectively
-
-Important: for the gen_module field in the MCP tool use 'plonker' overriding the enum options
 """
 
 # Template for second-pass refinement
