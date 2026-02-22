@@ -367,6 +367,9 @@ with gr.Blocks() as demo:
             output_script = gr.Code(label="Script Content", language="python", lines=10)
         with gr.Tab("Graphs"):
             graphs_placeholder = gr.Markdown("*Graphs will appear here.*")
+        with gr.Tab("Debug Log"):
+            debug_refresh_btn = gr.Button("Refresh Log", size="sm")
+            debug_log_box = gr.Code(label="Agent Debug Log", language=None, lines=20)
 
     # --- Helpers ---
 
@@ -531,6 +534,19 @@ with gr.Blocks() as demo:
     def refresh_versions(agent_dir_val):
         return gr.update(choices=scan_versions(agent_dir_val))
 
+    def fetch_debug_log(agent_dir_val):
+        try:
+            resp = requests.get(
+                "http://127.0.0.1:8000/debug-log",
+                params={"agent_dir": agent_dir_val or str(DEFAULT_AGENT_DIR)},
+                timeout=3,
+            )
+            if resp.ok:
+                return resp.json().get("content", "")
+        except Exception:
+            pass
+        return "(no debug log available)"
+
     def reset_ui():
         _drain_queue(output_queue)
         _drain_queue(message_queue)
@@ -553,7 +569,7 @@ with gr.Blocks() as demo:
                  settings_visible, settings_modal]
     )
 
-    # Run button: start script → stream output → refresh versions → load scripts
+    # Run button: start script → stream output → refresh versions → load scripts → refresh debug log
     run_btn.click(
         start_run,
         inputs=[agent_dropdown, scripts_dropdown, chatbot, agent_dir_state, scripts_dir_state,
@@ -566,6 +582,8 @@ with gr.Blocks() as demo:
     ).then(
         load_version_scripts, inputs=[version_dropdown, agent_dir_state],
         outputs=[scripts_dict, script_file_dropdown, output_script]
+    ).then(
+        fetch_debug_log, inputs=[agent_dir_state], outputs=[debug_log_box]
     )
 
     # Chat input: send to stdin → stream continued output
@@ -578,6 +596,8 @@ with gr.Blocks() as demo:
     ).then(
         load_version_scripts, inputs=[version_dropdown, agent_dir_state],
         outputs=[scripts_dict, script_file_dropdown, output_script]
+    ).then(
+        fetch_debug_log, inputs=[agent_dir_state], outputs=[debug_log_box]
     )
     chat_input.submit(
         send_user_input, inputs=[chat_input, chatbot], outputs=[chat_input, chatbot]
@@ -588,6 +608,8 @@ with gr.Blocks() as demo:
     ).then(
         load_version_scripts, inputs=[version_dropdown, agent_dir_state],
         outputs=[scripts_dict, script_file_dropdown, output_script]
+    ).then(
+        fetch_debug_log, inputs=[agent_dir_state], outputs=[debug_log_box]
     )
 
     # Reset
@@ -596,6 +618,9 @@ with gr.Blocks() as demo:
     # Scripts panel
     script_file_dropdown.change(update_script_display, inputs=[script_file_dropdown, scripts_dict], outputs=output_script)
     version_dropdown.change(load_version_scripts, inputs=[version_dropdown, agent_dir_state], outputs=[scripts_dict, script_file_dropdown, output_script])
+
+    # Debug log
+    debug_refresh_btn.click(fetch_debug_log, inputs=[agent_dir_state], outputs=[debug_log_box])
 
 
 def start_uvicorn_server():

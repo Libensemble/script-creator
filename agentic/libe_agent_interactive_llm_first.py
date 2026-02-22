@@ -2,15 +2,15 @@
 """
 Interactive LangChain agent for libEnsemble script generation and execution.
 
-The agent has tools and the chat IS the agent loop:
-- Each user message is a real user message in the conversation
-- The agent responds with tool calls and text
-- No fake 'ask_user' workaround
+LLM-first approach: the agent has tools and the chat IS the agent loop.
+Each user message is a real HumanMessage. The agent responds with tool
+calls and/or text. No fake 'ask_user' workaround.
 
 Without --interactive, it runs autonomously in a single invocation.
 
 Requirements: pip install langchain langchain-openai mcp openai
-For options: python libe_agent_interactive.py -h
+              (add langchain-anthropic for Claude models)
+For options: python libe_agent_interactive_llm_first.py -h
 """
 
 import os
@@ -22,10 +22,12 @@ import argparse
 import shutil
 import time
 from pathlib import Path
-from pydantic import BaseModel, Field
+from typing import Optional
+from pydantic import BaseModel, Field, create_model
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
+from langchain_core.messages import HumanMessage
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -40,35 +42,9 @@ else:
     MODEL = DEFAULT_ANTHROPIC_MODEL
 SHOW_PROMPTS = False
 
-# Directory where existing generated_scripts runs are moved (create if missing)
 ARCHIVE_RUNS_DIR = "archive_runs"
+SKILLS_DIR = Path(__file__).parent / "skills"
 
-
-def archive_existing_output_dir(output_dir, archive_parent=None):
-    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh output_dir."""
-    output_dir = Path(output_dir)
-    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
-    if not output_dir.exists():
-        output_dir.mkdir(parents=True, exist_ok=True)
-        return
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
-    shutil.move(str(output_dir), str(dest))
-    print(f"Moved existing {output_dir} to {dest}")
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-
-def create_llm(model, temperature=0, base_url=None):
-    """Create LLM — ChatAnthropic for Claude models, ChatOpenAI otherwise."""
-    if "claude" in model.lower():
-        try:
-            from langchain_anthropic import ChatAnthropic
-        except ImportError:
-            sys.exit("Error: pip install langchain-anthropic required for Claude models")
-        return ChatAnthropic(model=model, temperature=temperature)
-    return ChatOpenAI(model=model, temperature=temperature, base_url=base_url)
-
-# Marker so the web UI knows the script is waiting for input
 INPUT_MARKER = "[INPUT_REQUESTED]"
 
 DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
@@ -79,15 +55,29 @@ DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - The output file for each simulation is output.txt
 - The bounds should be 0,1 and -1,2 for X0 and X1 respectively"""
 
-SYSTEM_PROMPT = """You are a libEnsemble script assistant. You have tools to generate, read, write, run, and list scripts.
+SYSTEM_PROMPT = """You are a libEnsemble script assistant. You help users generate, review, modify, and run libEnsemble scripts for parallel optimization.
 
-IMPORTANT RULES:
-- Only use CreateLibEnsembleScripts ONCE to generate initial scripts. NEVER call it again.
-- For ANY modifications the user requests, use read_file to see the current file, then write_file to save the edited version.
-- If the user asks to see something, use read_file and show them the content.
-- Don't run scripts unless the user explicitly asks you to run them.
-- When reviewing scripts, highlight key configuration: generator bounds/parameters and the objective function.
-- After running, if scripts fail, explain the error and offer to fix using write_file."""
+You have these tools:
+- CreateLibEnsembleScripts: Generate initial scripts from a description. Call it ONCE per session. Pass ALL user-specified values as tool parameters (sim_app, input_path, num_workers, max_sims, template_vars, etc.).
+- read_file: Read a script to inspect it.
+- write_file: Modify a script (read it first, then write the full updated content).
+- run_script: Run a script. Only do this when the user asks.
+- list_files: List available scripts.
+- read_skill: Read a reference doc about generators, optimizer options, etc. Use when the user asks about configuration choices — not during initial generation/refinement.
+
+Rules:
+- When calling CreateLibEnsembleScripts, extract EVERY detail from the user's request and pass it as a tool parameter. Especially sim_app (executable path), input_path, template_vars, num_workers, max_sims.
+- Only call CreateLibEnsembleScripts ONCE. For all later modifications, use read_file + write_file.
+- After generating, read each file and verify these values match the user's request — fix ONLY wrong values with write_file, do not rewrite or restructure:
+  - run_libe.py: sim_app (must be user's executable path, not blank/placeholder), lb/ub in gen_specs, sim_max in exit_criteria, num_workers
+  - simf.py: output filename in set_objective_value(), app_name in exctr.submit()
+- The generated simf.py launches an external executable — that is the correct structure. You may fix specific values in it (e.g. output filename), but NEVER replace it with a direct Python function implementation.
+- Do not change the overall structure of generated scripts. Only fix specific values to match the user's request.
+- Not every user message requires a tool call. If the user asks a question, just answer it. If they ask to see something, use read_file and show it. Only use tools when the user is asking you to do something to the scripts.
+- Don't run scripts unless asked.
+- Be concise. Don't repeat the full script content unless asked.
+
+{skill_index}"""
 
 ARCHIVE_ITEMS = [
     "ensemble", "ensemble.log", "libE_stats.txt",
@@ -99,9 +89,66 @@ mcp_session = None
 WORK_DIR = None
 ARCHIVE_COUNTER = 1
 CURRENT_ARCHIVE = None
+USER_PROMPT = None
+DEBUG_LOG = None
 
 
-# ── Archiving ────────────────────────────────────────────────
+# ── Skills ───────────────────────────────────────────────────
+
+def load_skill_index():
+    """Build a short index of skill files (filename + first heading) for the system prompt."""
+    if not SKILLS_DIR.exists():
+        return ""
+    lines = []
+    for f in sorted(SKILLS_DIR.glob("*.md")):
+        first_line = f.read_text().split("\n", 1)[0].lstrip("# ").strip()
+        lines.append(f"- {f.name}: {first_line}")
+    if not lines:
+        return ""
+    return "Available reference docs (use read_skill tool to read when relevant):\n" + "\n".join(lines)
+
+
+# ── Debug logging ─────────────────────────────────────────────
+
+def dump_messages(messages, label=""):
+    """Write full message history to DEBUG_LOG file."""
+    if not DEBUG_LOG:
+        return
+    with open(DEBUG_LOG, "a") as f:
+        f.write(f"\n{'='*80}\n")
+        if label:
+            f.write(f"  {label}\n{'='*80}\n")
+        for msg in messages:
+            role = type(msg).__name__
+            f.write(f"\n--- {role} ---\n")
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                f.write("[Tool calls]\n")
+                for tc in msg.tool_calls:
+                    f.write(f"  {tc.get('name', '?')}({tc.get('args', {})})\n")
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if content:
+                if len(content) > 2000:
+                    f.write(content[:1000] + f"\n... [{len(content)} chars total] ...\n" + content[-500:] + "\n")
+                else:
+                    f.write(content + "\n")
+        f.write(f"\n{'='*80}\n\n")
+
+
+# ── Archive helpers ──────────────────────────────────────────
+
+def archive_existing_output_dir(output_dir, archive_parent=None):
+    """If output_dir exists, move it to archive_parent/output_dir_<unique>, then create fresh."""
+    output_dir = Path(output_dir)
+    archive_dir = Path(archive_parent or ARCHIVE_RUNS_DIR)
+    if not output_dir.exists():
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = archive_dir / f"{output_dir.name}_{hex(time.time_ns())[2:10]}"
+    shutil.move(str(output_dir), str(dest))
+    print(f"Moved existing {output_dir} to {dest}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
 
 def start_new_archive(action):
     global ARCHIVE_COUNTER, CURRENT_ARCHIVE
@@ -137,6 +184,27 @@ def archive_run_output(error_msg=""):
                     fp.unlink()
 
 
+# ── MCP schema conversion ────────────────────────────────────
+
+JSON_TO_PYTHON = {"string": str, "boolean": bool, "integer": int, "number": float}
+
+def mcp_tool_to_pydantic(mcp_tool):
+    """Convert an MCP tool's JSON inputSchema to a Pydantic model.
+
+    Without this, StructuredTool receives a raw dict and the LLM never
+    sees the parameter names or descriptions — so it can't fill them in.
+    """
+    props = mcp_tool.inputSchema.get("properties", {})
+    field_defs = {}
+    for name, spec in props.items():
+        if spec.get("type") == "array":
+            py_type = list
+        else:
+            py_type = JSON_TO_PYTHON.get(spec.get("type"), str)
+        field_defs[name] = (Optional[py_type], Field(default=None, description=spec.get("description", "")))
+    return create_model(mcp_tool.name + "Input", **field_defs)
+
+
 # ── Tool schemas ─────────────────────────────────────────────
 
 class RunScriptInput(BaseModel):
@@ -151,6 +219,9 @@ class WriteFileInput(BaseModel):
 
 class ListFilesInput(BaseModel):
     pass
+
+class ReadSkillInput(BaseModel):
+    filename: str = Field(description="Name of the skill file to read (e.g. 'aposmm.md', 'generators.md')")
 
 
 # ── Tool implementations ────────────────────────────────────
@@ -205,12 +276,18 @@ async def list_files_tool() -> str:
     return "Files:\n" + "\n".join(f"- {f.name}" for f in py_files)
 
 
+async def read_skill_tool(filename: str) -> str:
+    skill_path = SKILLS_DIR / filename
+    if not skill_path.exists():
+        available = [f.name for f in SKILLS_DIR.glob("*.md")] if SKILLS_DIR.exists() else []
+        return f"ERROR: '{filename}' not found. Available: {available}"
+    return skill_path.read_text()
+
+
 async def generate_scripts_mcp(**kwargs):
-    """Call MCP tool to generate scripts, auto-save to work dir"""
-    if 'custom_set_objective' in kwargs:
-        del kwargs['custom_set_objective']
-    if 'set_objective_code' in kwargs:
-        del kwargs['set_objective_code']
+    """Call MCP tool to generate scripts, auto-save to work dir."""
+    kwargs.pop('custom_set_objective', None)
+    kwargs.pop('set_objective_code', None)
 
     result = await mcp_session.call_tool("CreateLibEnsembleScripts", kwargs)
     scripts_text = result.content[0].text if result.content else ""
@@ -224,7 +301,28 @@ async def generate_scripts_mcp(**kwargs):
         start_new_archive("generated")
         archive_current_scripts()
 
-    return scripts_text
+    reminder = (
+        "\n\nScripts generated. Now read each file and verify that sim_app, "
+        "bounds (lb/ub), sim_max, and num_workers match the user's request below. "
+        "If any specific value is wrong, fix ONLY that value with write_file. "
+        "Do NOT rewrite or restructure the scripts."
+    )
+    if USER_PROMPT:
+        reminder += f"\n\nUser's request:\n{USER_PROMPT}\n"
+    return scripts_text + reminder
+
+
+# ── LLM factory ──────────────────────────────────────────────
+
+def create_llm(model, temperature=0, base_url=None):
+    """Create LLM — ChatAnthropic for Claude models, ChatOpenAI otherwise."""
+    if "claude" in model.lower():
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError:
+            sys.exit("Error: pip install langchain-anthropic required for Claude models")
+        return ChatAnthropic(model=model, temperature=temperature)
+    return ChatOpenAI(model=model, temperature=temperature, base_url=base_url)
 
 
 # ── MCP server discovery ────────────────────────────────────
@@ -250,16 +348,16 @@ def find_mcp_server(user_path=None):
 # ── Main ─────────────────────────────────────────────────────
 
 async def main():
-    global mcp_session, WORK_DIR, SHOW_PROMPTS
+    global mcp_session, WORK_DIR, SHOW_PROMPTS, USER_PROMPT
 
     parser = argparse.ArgumentParser(
         description="Interactive agent for libEnsemble scripts",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python libe_agent_interactive.py --interactive
-  python libe_agent_interactive.py --interactive --scripts my_scripts/
-  python libe_agent_interactive.py --prompt "Create APOSMM scripts..."
+  python libe_agent_interactive_llm_first.py --interactive
+  python libe_agent_interactive_llm_first.py --interactive --scripts my_scripts/
+  python libe_agent_interactive_llm_first.py --prompt "Create APOSMM scripts..."
         """
     )
     parser.add_argument("--interactive", action="store_true", help="Enable interactive chat mode")
@@ -267,6 +365,7 @@ Examples:
     parser.add_argument("--prompt", help="Prompt for script generation")
     parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--show-prompts", action="store_true")
+    parser.add_argument("--debug", action="store_true", help="Dump full message log to debug_log.txt")
     parser.add_argument("--mcp-server", help="Path to mcp_server.mjs")
     parser.add_argument("--generate-only", action="store_true")
     parser.add_argument("--max-iterations", type=int, default=15)
@@ -274,8 +373,25 @@ Examples:
 
     SHOW_PROMPTS = args.show_prompts
     interactive = args.interactive
+
+    global DEBUG_LOG
+    if args.debug or os.environ.get("AGENT_DEBUG"):
+        DEBUG_LOG = "debug_log.txt"
+        with open(DEBUG_LOG, "w") as f:
+            f.write(f"Debug log started: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Model: {MODEL}\n\n")
+
     archive_existing_output_dir("generated_scripts")
     WORK_DIR = Path("generated_scripts")
+
+    # Load skills into system prompt
+    skill_index = load_skill_index()
+    system_prompt = SYSTEM_PROMPT.format(skill_index=skill_index)
+
+    if DEBUG_LOG:
+        with open(DEBUG_LOG, "a") as f:
+            f.write("SYSTEM PROMPT\n" + "="*80 + "\n")
+            f.write(system_prompt + "\n\n")
 
     # Connect to MCP server
     mcp_server = find_mcp_server(args.mcp_server)
@@ -288,42 +404,47 @@ Examples:
             mcp_session = session
             print("✓ Connected to MCP server")
 
-            # Get MCP tool schema
             mcp_tools = await session.list_tools()
             mcp_tool = mcp_tools.tools[0]
 
-            # Build tools
+            mcp_schema = mcp_tool_to_pydantic(mcp_tool)
             tools = [
                 StructuredTool(
                     name=mcp_tool.name, description=mcp_tool.description,
-                    args_schema=mcp_tool.inputSchema, coroutine=generate_scripts_mcp
+                    args_schema=mcp_schema, coroutine=generate_scripts_mcp
                 ),
                 StructuredTool(name="run_script", description="Run a Python script. Returns SUCCESS or FAILED with error details.", args_schema=RunScriptInput, coroutine=run_script_tool),
                 StructuredTool(name="read_file", description="Read a file to inspect its contents.", args_schema=ReadFileInput, coroutine=read_file_tool),
                 StructuredTool(name="write_file", description="Write/overwrite a file to fix scripts.", args_schema=WriteFileInput, coroutine=write_file_tool),
                 StructuredTool(name="list_files", description="List Python files in working directory.", args_schema=ListFilesInput, coroutine=list_files_tool),
+                StructuredTool(name="read_skill", description="Read a reference doc about generators, optimizer options, or configuration.", args_schema=ReadSkillInput, coroutine=read_skill_tool),
             ]
 
+            if DEBUG_LOG:
+                with open(DEBUG_LOG, "a") as f:
+                    f.write("TOOL SCHEMAS\n" + "="*80 + "\n")
+                    for t in tools:
+                        f.write(f"\n{t.name}: {t.description}\n")
+                        if t.args_schema:
+                            f.write(f"  Schema: {t.args_schema.model_json_schema()}\n")
+
             llm = create_llm(MODEL, base_url=os.environ.get("OPENAI_BASE_URL"))
-            agent = create_agent(llm, tools)
+            agent = create_agent(llm, tools, system_prompt=system_prompt)
             print("✓ Agent initialized\n")
 
-            # Build initial message
-            messages = [("system", SYSTEM_PROMPT)]
+            # Build initial user message
+            messages = []
 
             if args.scripts:
-                # Load existing scripts
                 scripts_dir = Path(args.scripts)
                 for f in sorted(scripts_dir.glob("*.py")):
                     shutil.copy(f, WORK_DIR)
                     print(f"Copied: {f.name}")
                 start_new_archive("copied_scripts")
                 archive_current_scripts()
-
                 run_scripts = list(WORK_DIR.glob("run_*.py"))
                 run_name = run_scripts[0].name if run_scripts else "run_libe.py"
                 initial_msg = f"I have libEnsemble scripts. The main script is '{run_name}'. Please review them and highlight the key configuration."
-
             elif args.prompt:
                 initial_msg = args.prompt
             elif args.prompt_file:
@@ -338,51 +459,39 @@ Examples:
             else:
                 initial_msg = DEFAULT_PROMPT
 
+            USER_PROMPT = initial_msg
+
             if not interactive:
-                # Autonomous mode: single invocation, agent does everything
-                goal = f"""{initial_msg}
-
-After generating/loading scripts: review them, run them, fix errors and retry (max 3 attempts). Report the result."""
-                messages.append(("user", goal))
-
+                # Autonomous: single invocation
+                goal = f"{initial_msg}\n\nAfter generating/loading scripts: review them, run them, fix errors and retry (max 3 attempts). Report the result."
+                messages.append(HumanMessage(content=goal))
                 if SHOW_PROMPTS:
                     print(f"Goal: {goal}\n")
                 print("Starting agent...\n")
-
                 result = await agent.ainvoke({"messages": messages})
+                dump_messages(result["messages"], "Autonomous run complete")
                 print(f"\n{'='*60}")
                 print("✓ Agent completed")
                 print(f"{'='*60}")
                 print(result["messages"][-1].content)
-
             else:
-                # Interactive mode: chat loop with automatic refine cycle
-                goal = f"""User request: {initial_msg}
-
-Instructions:
-1. Use CreateLibEnsembleScripts to generate the initial scripts.
-2. Read each generated script using read_file.
-3. Check the scripts match the user's request (bounds, sims, paths, parameters, etc).
-4. If anything doesn't match, fix it using write_file. Common issues: wrong bounds, wrong sim count, missing paths.
-5. Present a concise summary of the scripts and what you fixed (if anything).
-6. Then wait for the user's feedback."""
-                messages.append(("user", goal))
+                # Interactive: chat loop
+                messages.append(HumanMessage(content=initial_msg))
                 print("Starting agent...\n")
 
+                turn = 0
                 while True:
                     try:
-                        # Agent turn
                         result = await agent.ainvoke({"messages": messages})
                         messages = result["messages"]
-
-                        # Print agent's response
+                        turn += 1
+                        dump_messages(messages, f"Interactive turn {turn}")
                         response = messages[-1].content
                         if response:
                             print(f"\n{response}", flush=True)
                     except Exception as e:
                         print(f"\n⚠️ Agent error: {e}", flush=True)
 
-                    # Wait for user input
                     print(INPUT_MARKER, flush=True)
                     user_input = input().strip()
 
@@ -390,10 +499,6 @@ Instructions:
                         print("\n✓ Session ended")
                         break
 
-                    # Add as a proper HumanMessage to match LangGraph's message format
-                    from langchain_core.messages import HumanMessage, SystemMessage
-                    # Remind the model to respond to the user, not continue previous task
-                    messages.append(SystemMessage(content="STOP. Read the user's next message carefully and respond to exactly what they ask. Do not continue previous tasks."))
                     messages.append(HumanMessage(content=user_input))
 
 

@@ -37,10 +37,11 @@ class Session:
             })
 
     def send_input(self, text):
-        """Send text to the running process's stdin"""
+        """Send text to the running process's stdin (flattened to one line for input())"""
         if self.process and self.process.stdin:
             try:
-                self.process.stdin.write(text + "\n")
+                single_line = text.replace("\n", " ").replace("\r", " ")
+                self.process.stdin.write(single_line + "\n")
                 self.process.stdin.flush()
             except Exception as e:
                 self.output_queue.put(("error", f"Failed to send input: {e}"))
@@ -90,8 +91,7 @@ class Session:
             except Empty:
                 break
 
-        # Pass selected model to subprocess
-        env_overrides = {}
+        env_overrides = {"AGENT_DEBUG": "1"}
         if llm_model:
             env_overrides["LLM_MODEL"] = llm_model
         if openai_base_url:
@@ -127,6 +127,15 @@ class Session:
 
 
 sessions: dict[str, Session] = {}
+
+
+@app.get("/debug-log")
+async def get_debug_log(agent_dir: str = ""):
+    run_dir = Path(agent_dir) if agent_dir else AGENT_DIR
+    log_file = run_dir / "debug_log.txt"
+    if log_file.exists():
+        return {"content": log_file.read_text()}
+    return {"content": ""}
 
 
 @app.websocket("/ws/{session_id}")
