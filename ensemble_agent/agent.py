@@ -125,7 +125,10 @@ async def _run_autonomous(agent, messages, initial_msg, config):
     print(f"\n{'=' * 60}")
     print("Agent completed")
     print(f"{'=' * 60}")
-    print(result["messages"][-1].content)
+    content = result["messages"][-1].content
+    if isinstance(content, list):
+        content = "".join(block.get("text", "") for block in content)
+    print(content)
 
 
 async def _run_interactive(agent, messages, initial_msg, config, has_generator):
@@ -142,6 +145,8 @@ async def _run_interactive(agent, messages, initial_msg, config, has_generator):
             result = await agent.ainvoke({"messages": messages})
             messages = result["messages"]
             response = messages[-1].content
+            if isinstance(response, list):
+                response = "".join(block.get("text", "") for block in response)
             if response:
                 print(f"\n{response}", flush=True)
         except Exception as e:

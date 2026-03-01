@@ -13,7 +13,8 @@ def create_llm(model, temperature=0, base_url=None):
             sys.exit("Error: pip install langchain-anthropic required for Claude models")
         anthropic_base = os.environ.get("ANTHROPIC_BASE_URL")
         return ChatAnthropic(
-            model=model, temperature=temperature, base_url=anthropic_base or None
+            model=model, temperature=temperature, base_url=anthropic_base or None,
+            streaming=True,
         )
     from langchain_openai import ChatOpenAI
 
