@@ -26,6 +26,9 @@ from .skills.generator import GeneratorSkill
 async def run_agent(config: AgentConfig):
     """Main entry point: build skills, connect MCP, run the agent loop."""
 
+    # Archive existing output dir before starting fresh
+    ArchiveManager.archive_existing_output_dir(config.output_dir)
+
     # Set up archive manager
     archive = ArchiveManager(config.output_dir)
 
@@ -55,9 +58,9 @@ async def run_agent(config: AgentConfig):
             tools.extend(skill.get_tools())
 
         # Create LLM and agent
-        llm = create_llm(config.model, config.temperature, config.base_url)
+        llm, service = create_llm(config.model, config.temperature, config.base_url)
         agent = create_agent(llm, tools)
-        print("Agent initialized\n")
+        print(f"Agent initialized (model: {config.model}, service: {service})\n")
 
         # Build system prompt
         system_prompt = build_system_prompt(skills, has_generator)
