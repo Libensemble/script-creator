@@ -5,10 +5,13 @@ SYSTEM_PROMPT = """You are a simulation script assistant. You have tools to gene
 IMPORTANT RULES:
 {generator_rules}
 - For ANY modifications, use read_file to see the current file, then write_file to save the edited version.
+- DO NOT merge or consolidate files - keep the same file structure.
+- DO NOT create new files unless explicitly asked. Fix existing files only.
+- DO NOT make any other changes or improvements beyond what is needed.
+- If a script fails because an executable or input file is not found, report the error and stop.
 - If the user asks to see something, use read_file and show them the content.
 - Don't run scripts unless the user explicitly asks you to run them.
 - When reviewing scripts, highlight key configuration: generator bounds/parameters and the objective function.
-- After running, if scripts fail, explain the error and offer to fix using write_file.
 
 {skills_context}"""
 
@@ -24,7 +27,10 @@ NO_GENERATOR_RULES = (
 
 AUTONOMOUS_GOAL = """{initial_msg}
 
-After generating/loading scripts: review them, run them, fix errors and retry (max 3 attempts). Report the result."""
+After generating/loading scripts: review them, run them, and if they fail fix the error and retry.
+DO NOT make any other changes or improvements.
+DO NOT wrap in markdown or add explanations when fixing.
+Report the result."""
 
 INTERACTIVE_GOAL = """User request: {initial_msg}
 

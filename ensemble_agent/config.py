@@ -75,6 +75,7 @@ class AgentConfig:
     # Output
     output_dir: str = DEFAULT_OUTPUT_DIR
     show_prompts: bool = False
+    debug: bool = False
 
     # Execution limits
     max_retries: int = MAX_RETRIES
@@ -118,6 +119,7 @@ Examples:
     parser.add_argument("--mcp-server", help="Path to generator mcp_server.mjs")
     parser.add_argument("--generate-only", action="store_true", help="Only generate scripts, don't run")
     parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
+    parser.add_argument("--debug", action="store_true", help="Dump full message log to debug_log.txt")
     parser.add_argument("--max-iterations", type=int, default=MAX_AGENT_ITERATIONS, help="Max agent iterations")
     args = parser.parse_args(argv)
 
@@ -130,6 +132,7 @@ Examples:
         skills=args.skills,
         mcp_server=args.mcp_server,
         show_prompts=args.show_prompts,
+        debug=args.debug or bool(os.environ.get("AGENT_DEBUG")),
         max_iterations=args.max_iterations,
     )
     if args.model:

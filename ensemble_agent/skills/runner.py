@@ -49,6 +49,7 @@ class RunnerSkill(Skill):
                 )
                 if result.returncode == 0:
                     skill._succeeded = True
+                    archive.run_succeeded = True
                     print("Script ran successfully", flush=True)
                     return f"SUCCESS\nOutput:\n{result.stdout[:500]}"
                 else:

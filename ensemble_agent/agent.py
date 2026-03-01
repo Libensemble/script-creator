@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from .archive import ArchiveManager
 from .config import AgentConfig, INPUT_MARKER
+from .debug import DebugLogger
 from .llm import create_llm
 from .mcp_client import connect_mcp, find_mcp_server
 from .prompts import (
@@ -22,6 +23,14 @@ from .scripts import detect_run_script
 from .skills import load_skills
 from .skills.generator import GeneratorSkill
 
+DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
+- Executable: six_hump_camel/six_hump_camel.x
+- Input: six_hump_camel/input.txt
+- Template vars: X0, X1
+- 4 workers, 100 sims.
+- The output file for each simulation is output.txt
+- The bounds should be 0,1 and -1,2 for X0 and X1 respectively"""
+
 
 async def run_agent(config: AgentConfig):
     """Main entry point: build skills, connect MCP, run the agent loop."""
@@ -31,6 +40,12 @@ async def run_agent(config: AgentConfig):
 
     # Set up archive manager
     archive = ArchiveManager(config.output_dir)
+
+    # Debug logger
+    debug = None
+    if config.debug:
+        log_path = Path(config.output_dir) / "debug_log.txt"
+        debug = DebugLogger(log_path, model=config.model)
 
     # Load skills — drop generator when using existing scripts
     skill_names = config.skills
@@ -69,6 +84,10 @@ async def run_agent(config: AgentConfig):
         system_prompt = build_system_prompt(skills, has_generator)
         messages = [("system", system_prompt)]
 
+        if debug:
+            debug.log_system_prompt(system_prompt)
+            debug.log_tool_schemas(tools)
+
         if config.show_prompts:
             print(f"System prompt:\n{system_prompt}\n")
 
@@ -76,9 +95,9 @@ async def run_agent(config: AgentConfig):
         initial_msg = _build_initial_message(config, archive)
 
         if not config.interactive:
-            await _run_autonomous(agent, messages, initial_msg, config)
+            await _run_autonomous(agent, messages, initial_msg, config, debug)
         else:
-            await _run_interactive(agent, messages, initial_msg, config, has_generator)
+            await _run_interactive(agent, messages, initial_msg, config, has_generator, debug)
 
 
 def _build_initial_message(config, archive):
@@ -105,20 +124,12 @@ def _build_initial_message(config, archive):
         user_input = input().strip()
         if user_input:
             return user_input
-        print("Using default demo prompt")
 
-    return (
-        "Create six_hump_camel APOSMM scripts:\n"
-        "- Executable: six_hump_camel/six_hump_camel.x\n"
-        "- Input: six_hump_camel/input.txt\n"
-        "- Template vars: X0, X1\n"
-        "- 4 workers, 100 sims.\n"
-        "- The output file for each simulation is output.txt\n"
-        "- The bounds should be 0,1 and -1,2 for X0 and X1 respectively"
-    )
+    print("Using demo prompt")
+    return DEFAULT_PROMPT
 
 
-async def _run_autonomous(agent, messages, initial_msg, config):
+async def _run_autonomous(agent, messages, initial_msg, config, debug):
     """Single invocation — agent generates/loads, runs, fixes, reports."""
     goal = AUTONOMOUS_GOAL.format(initial_msg=initial_msg)
     messages.append(("user", goal))
@@ -128,6 +139,8 @@ async def _run_autonomous(agent, messages, initial_msg, config):
     print("Starting agent...\n")
 
     result = await agent.ainvoke({"messages": messages})
+    if debug:
+        debug.dump_messages(result["messages"], "Autonomous run complete")
     print(f"\n{'=' * 60}")
     print("Agent completed")
     print(f"{'=' * 60}")
@@ -137,7 +150,7 @@ async def _run_autonomous(agent, messages, initial_msg, config):
     print(content)
 
 
-async def _run_interactive(agent, messages, initial_msg, config, has_generator):
+async def _run_interactive(agent, messages, initial_msg, config, has_generator, debug):
     """Chat loop — agent responds, waits for user input, repeats."""
     if has_generator:
         goal = INTERACTIVE_GOAL.format(initial_msg=initial_msg)
@@ -145,11 +158,15 @@ async def _run_interactive(agent, messages, initial_msg, config, has_generator):
         goal = initial_msg
     messages.append(("user", goal))
     print("Starting agent...\n")
+    turn = 0
 
     while True:
         try:
             result = await agent.ainvoke({"messages": messages})
             messages = result["messages"]
+            turn += 1
+            if debug:
+                debug.dump_messages(messages, f"Interactive turn {turn}")
             response = messages[-1].content
             if isinstance(response, list):
                 response = "".join(block.get("text", "") for block in response)

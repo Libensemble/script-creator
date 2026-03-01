@@ -36,6 +36,8 @@ class FileOpsSkill(Skill):
             return file_path.read_text()
 
         async def write_file_tool(filepath: str, content: str) -> str:
+            if archive.run_succeeded:
+                return "Script already ran successfully. No further changes needed."
             try:
                 file_path = work_dir / filepath
                 # Diff against old content for summary
