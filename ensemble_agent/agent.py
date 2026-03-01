@@ -19,9 +19,8 @@ from .prompts import (
     INTERACTIVE_REVIEW_GOAL,
     build_system_prompt,
 )
-from .scripts import detect_run_script
-from .skills import load_skills
-from .skills.generator import GeneratorSkill
+from .tools import load_tool_providers
+from .tools.generator import GeneratorTools
 
 DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 - Executable: six_hump_camel/six_hump_camel.x
@@ -33,7 +32,7 @@ DEFAULT_PROMPT = """Create six_hump_camel APOSMM scripts:
 
 
 async def run_agent(config: AgentConfig):
-    """Main entry point: build skills, connect MCP, run the agent loop."""
+    """Main entry point: build tools, connect MCP, run the agent loop."""
 
     # Archive existing output dir before starting fresh
     ArchiveManager.archive_existing_output_dir(config.output_dir)
@@ -47,14 +46,11 @@ async def run_agent(config: AgentConfig):
         log_path = Path(config.output_dir) / "debug_log.txt"
         debug = DebugLogger(log_path, model=config.model)
 
-    # Load skills — drop generator when using existing scripts
-    skill_names = config.skills
-    if config.scripts_dir and "generator" in skill_names:
-        skill_names = ",".join(s for s in skill_names.split(",") if s.strip() != "generator")
-    skills = load_skills(skill_names, config, archive)
-    has_generator = any(isinstance(s, GeneratorSkill) for s in skills)
+    # Load tool providers
+    providers = load_tool_providers(config, archive)
+    has_generator = any(isinstance(p, GeneratorTools) for p in providers)
 
-    # MCP setup for generator skill
+    # MCP setup for generator
     async with AsyncExitStack() as stack:
         if has_generator:
             mcp_server = find_mcp_server(config.mcp_server)
@@ -62,18 +58,18 @@ async def run_agent(config: AgentConfig):
             session = await stack.enter_async_context(connect_mcp(mcp_server))
             print("Connected to MCP server")
 
-            # Get MCP tool schema and inject into generator skill
+            # Get MCP tool schema and inject into generator
             mcp_tools = await session.list_tools()
             mcp_tool = mcp_tools.tools[0]
-            for skill in skills:
-                if isinstance(skill, GeneratorSkill):
-                    skill.set_mcp_session(session)
-                    skill.set_mcp_tool_schema(mcp_tool)
+            for p in providers:
+                if isinstance(p, GeneratorTools):
+                    p.set_mcp_session(session)
+                    p.set_mcp_tool_schema(mcp_tool)
 
-        # Collect tools from all skills
+        # Collect tools from all providers
         tools = []
-        for skill in skills:
-            tools.extend(skill.get_tools())
+        for p in providers:
+            tools.extend(p.get_tools())
 
         # Create LLM and agent
         llm, service = create_llm(config.model, config.temperature, config.base_url)
@@ -81,7 +77,7 @@ async def run_agent(config: AgentConfig):
         print(f"Agent initialized (model: {config.model}, service: {service})\n")
 
         # Build system prompt
-        system_prompt = build_system_prompt(skills, has_generator)
+        system_prompt = build_system_prompt(providers, has_generator)
         messages = [("system", system_prompt)]
 
         if debug:

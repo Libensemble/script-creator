@@ -33,9 +33,6 @@ ARCHIVE_ITEMS = [
 # UI
 INPUT_MARKER = "[INPUT_REQUESTED]"
 
-# Default skills
-DEFAULT_SKILLS = "file_ops,runner,generator,reference_docs"
-
 
 def _default_model() -> str:
     """Pick default model based on available API keys."""
@@ -65,9 +62,6 @@ class AgentConfig:
     base_url: Optional[str] = field(
         default_factory=lambda: os.environ.get("OPENAI_BASE_URL")
     )
-
-    # Skills
-    skills: str = DEFAULT_SKILLS
 
     # MCP servers
     mcp_server: Optional[str] = None
@@ -104,10 +98,9 @@ def parse_args(argv=None) -> AgentConfig:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m ensemble_agent --interactive
-  python -m ensemble_agent --scripts tests/scripts_with_errors/
-  python -m ensemble_agent --prompt "Create APOSMM scripts..."
-  python -m ensemble_agent --scripts tests/ --skills file_ops,runner
+  python ensemble_agent.py --interactive
+  python ensemble_agent.py --scripts agentic/tests/scripts_with_errors/
+  python ensemble_agent.py --prompt "Create APOSMM scripts..."
         """,
     )
     parser.add_argument("--interactive", action="store_true", help="Enable interactive chat mode")
@@ -115,7 +108,6 @@ Examples:
     parser.add_argument("--prompt", help="Prompt for script generation")
     parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--model", default=None, help="LLM model name")
-    parser.add_argument("--skills", default=DEFAULT_SKILLS, help=f"Comma-separated skills (default: {DEFAULT_SKILLS})")
     parser.add_argument("--mcp-server", help="Path to generator mcp_server.mjs")
     parser.add_argument("--generate-only", action="store_true", help="Only generate scripts, don't run")
     parser.add_argument("--show-prompts", action="store_true", help="Print prompts sent to AI")
@@ -129,7 +121,6 @@ Examples:
         scripts_dir=args.scripts_dir,
         prompt=args.prompt,
         prompt_file=args.prompt_file,
-        skills=args.skills,
         mcp_server=args.mcp_server,
         show_prompts=args.show_prompts,
         debug=args.debug or bool(os.environ.get("AGENT_DEBUG")),

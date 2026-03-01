@@ -1,4 +1,4 @@
-"""File operations skill — read, write, list files in the work directory."""
+"""File operations — read, write, list files in the work directory."""
 
 import difflib
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from langchain_core.tools import StructuredTool
 
-from .base import Skill
+from .base import ToolProvider
 
 
 class ReadFileInput(BaseModel):
@@ -22,7 +22,7 @@ class ListFilesInput(BaseModel):
     pass
 
 
-class FileOpsSkill(Skill):
+class FileOpsTools(ToolProvider):
     """Provides read_file, write_file, and list_files tools."""
 
     def get_tools(self):

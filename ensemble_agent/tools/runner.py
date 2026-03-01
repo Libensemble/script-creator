@@ -1,18 +1,18 @@
-"""Script runner skill — execute scripts with timeout and archive output."""
+"""Script runner — execute scripts with timeout and archive output."""
 
 import subprocess
 
 from pydantic import BaseModel, Field
 from langchain_core.tools import StructuredTool
 
-from .base import Skill
+from .base import ToolProvider
 
 
 class RunScriptInput(BaseModel):
     script_name: str = Field(description="Name of the Python script to run")
 
 
-class RunnerSkill(Skill):
+class RunnerTools(ToolProvider):
     """Provides the run_script tool."""
 
     def __init__(self, config, archive):
@@ -25,13 +25,13 @@ class RunnerSkill(Skill):
         work_dir = self.archive.work_dir
         archive = self.archive
         timeout = self.config.script_timeout
-        skill = self
+        provider = self
 
         async def run_script_tool(script_name: str) -> str:
-            if skill._succeeded:
+            if provider._succeeded:
                 return "Script already ran successfully. Do not run again."
-            skill._run_count += 1
-            if skill._run_count > skill._max_runs:
+            provider._run_count += 1
+            if provider._run_count > provider._max_runs:
                 return "Run limit reached. Stop and report current status."
 
             script_path = work_dir / script_name
@@ -48,7 +48,7 @@ class RunnerSkill(Skill):
                     timeout=timeout,
                 )
                 if result.returncode == 0:
-                    skill._succeeded = True
+                    provider._succeeded = True
                     archive.run_succeeded = True
                     print("Script ran successfully", flush=True)
                     return f"SUCCESS\nOutput:\n{result.stdout[:500]}"

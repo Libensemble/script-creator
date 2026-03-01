@@ -1,13 +1,13 @@
-"""MCP script generator skill — wraps CreateLibEnsembleScripts tool."""
+"""MCP script generator — wraps CreateLibEnsembleScripts as a LangChain tool."""
 
 import re
 
 from langchain_core.tools import StructuredTool
 
-from .base import Skill
+from .base import ToolProvider
 
 
-class GeneratorSkill(Skill):
+class GeneratorTools(ToolProvider):
     """Wraps the MCP CreateLibEnsembleScripts tool as a LangChain tool."""
 
     def __init__(self, config, archive):

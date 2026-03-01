@@ -13,7 +13,7 @@ IMPORTANT RULES:
 - Don't run scripts unless the user explicitly asks you to run them.
 - When reviewing scripts, highlight key configuration: generator bounds/parameters and the objective function.
 
-{skills_context}"""
+{reference_context}"""
 
 GENERATOR_RULES = (
     "- Only use CreateLibEnsembleScripts ONCE to generate initial scripts. NEVER call it again.\n"
@@ -45,19 +45,19 @@ Instructions:
 INTERACTIVE_REVIEW_GOAL = """I have existing scripts. The main script is '{run_script_name}'. Please review them and highlight the key configuration."""
 
 
-def build_system_prompt(skills, has_generator):
-    """Assemble the system prompt from skill fragments."""
+def build_system_prompt(providers, has_generator):
+    """Assemble the system prompt from provider fragments and reference docs."""
     generator_rules = GENERATOR_RULES if has_generator else NO_GENERATOR_RULES
 
     fragments = []
-    for skill in skills:
-        frag = skill.get_prompt_fragment()
+    for p in providers:
+        frag = p.get_prompt_fragment()
         if frag:
             fragments.append(frag)
 
-    skills_context = "\n\n".join(fragments) if fragments else ""
+    reference_context = "\n\n".join(fragments) if fragments else ""
 
     return SYSTEM_PROMPT.format(
         generator_rules=generator_rules,
-        skills_context=skills_context,
+        reference_context=reference_context,
     )
