@@ -32,8 +32,11 @@ async def run_agent(config: AgentConfig):
     # Set up archive manager
     archive = ArchiveManager(config.output_dir)
 
-    # Load skills
-    skills = load_skills(config.skills, config, archive)
+    # Load skills — drop generator when using existing scripts
+    skill_names = config.skills
+    if config.scripts_dir and "generator" in skill_names:
+        skill_names = ",".join(s for s in skill_names.split(",") if s.strip() != "generator")
+    skills = load_skills(skill_names, config, archive)
     has_generator = any(isinstance(s, GeneratorSkill) for s in skills)
 
     # MCP setup for generator skill

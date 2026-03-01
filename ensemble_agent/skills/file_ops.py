@@ -1,5 +1,6 @@
 """File operations skill — read, write, list files in the work directory."""
 
+import difflib
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -36,10 +37,24 @@ class FileOpsSkill(Skill):
 
         async def write_file_tool(filepath: str, content: str) -> str:
             try:
-                (work_dir / filepath).write_text(content)
+                file_path = work_dir / filepath
+                # Diff against old content for summary
+                old_lines = file_path.read_text().splitlines() if file_path.exists() else []
+                new_lines = content.splitlines()
+                changes = list(difflib.unified_diff(old_lines, new_lines, n=0))
+                changed = [l for l in changes if l.startswith('+') and not l.startswith('+++')]
+
+                file_path.write_text(content)
                 archive.start("fix")
                 archive.archive_scripts()
-                print(f"- Saved: {work_dir / filepath}", flush=True)
+
+                if changed and len(changed) <= 3:
+                    summary = "; ".join(l[1:].strip() for l in changed)
+                    print(f"- Fixed: {filepath} ({summary})", flush=True)
+                elif changed:
+                    print(f"- Fixed: {filepath} ({len(changed)} lines changed)", flush=True)
+                else:
+                    print(f"- Saved: {filepath}", flush=True)
                 return f"SUCCESS: Wrote {filepath}"
             except Exception as e:
                 return f"ERROR: {e}"

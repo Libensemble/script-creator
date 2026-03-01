@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 from langchain_core.tools import StructuredTool
 
 from .base import Skill
-from ..config import MAX_RETRIES
 
 
 class RunScriptInput(BaseModel):
@@ -19,7 +18,8 @@ class RunnerSkill(Skill):
     def __init__(self, config, archive):
         super().__init__(config, archive)
         self._run_count = 0
-        self._max_runs = config.max_retries + 1  # initial run + retries
+        self._max_runs = config.max_retries + 1
+        self._succeeded = False
 
     def get_tools(self):
         work_dir = self.archive.work_dir
@@ -28,17 +28,17 @@ class RunnerSkill(Skill):
         skill = self
 
         async def run_script_tool(script_name: str) -> str:
+            if skill._succeeded:
+                return "Script already ran successfully. Do not run again."
             skill._run_count += 1
             if skill._run_count > skill._max_runs:
-                msg = f"RUN LIMIT REACHED ({skill._max_runs} runs). Stop and report the current status to the user."
-                print(f"\n{msg}", flush=True)
-                return msg
+                return "Run limit reached. Stop and report current status."
 
             script_path = work_dir / script_name
             if not script_path.exists():
                 return f"ERROR: Script '{script_name}' not found"
 
-            print(f"\nRunning {script_name}... (run {skill._run_count}/{skill._max_runs})", flush=True)
+            print(f"\nRunning {script_name}...", flush=True)
             try:
                 result = subprocess.run(
                     ["python", script_name],
@@ -48,6 +48,7 @@ class RunnerSkill(Skill):
                     timeout=timeout,
                 )
                 if result.returncode == 0:
+                    skill._succeeded = True
                     print("Script ran successfully", flush=True)
                     return f"SUCCESS\nOutput:\n{result.stdout[:500]}"
                 else:
@@ -57,13 +58,13 @@ class RunnerSkill(Skill):
                         f"Stdout: {result.stdout}"
                     )
                     print(f"Failed (code {result.returncode})", flush=True)
+                    if result.stderr:
+                        print(f"Error output:\n{result.stderr[:500]}", flush=True)
                     archive.archive_run_output(error_msg)
-                    remaining = skill._max_runs - skill._run_count
                     return (
                         f"FAILED (code {result.returncode})\n"
                         f"Stderr:\n{result.stderr}\n"
-                        f"Stdout:\n{result.stdout[:500]}\n"
-                        f"\nYou have {remaining} run(s) remaining."
+                        f"Stdout:\n{result.stdout[:500]}"
                     )
             except subprocess.TimeoutExpired:
                 return f"ERROR: Script timed out ({timeout}s)"
