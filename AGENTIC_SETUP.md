@@ -1,8 +1,11 @@
 # Running libEnsemble agentic workflows
 
+> **Note:** The agentic directory in this repo is experimental scripts and
+has been superceeded by the libEnsemble agent at https://github.com/Libensemble/ensemble_agent
+
 For all workflows, you will need a key to access an LLM.
 
-For example, you can set an OpenAPI key. 
+For example, you can set an OpenAPI key.
 Requires an [OpenAI account](https://platform.openai.com).
 Make sure to check MODEL at top of agentic script and usage rates.
 
@@ -63,7 +66,7 @@ cd script-creator/agentic/
 
 To run:
 
-Provide path to directory with your libEnsemble scripts. These will be copied 
+Provide path to directory with your libEnsemble scripts. These will be copied
 to a working directory `generated_scripts/`.
 
 ```bash
@@ -99,7 +102,7 @@ and update paths to `sim_app` and `input_file` in `tests/scripts_with_errors/run
 
 To run:
 
-Provide path to directory with your libEnsemble scripts. These will be copied 
+Provide path to directory with your libEnsemble scripts. These will be copied
 to a working directory `generated_scripts/`.
 
 ```bash
@@ -156,7 +159,7 @@ python libe_agent_with_script_generator.py --prompt-file my_prompt.txt
 # Use existing scripts (skip MCP generation/tweaking)
 python libe_agent_with_script_generator.py --scripts example_scripts/
 
-# Run from anywhere 
+# Run from anywhere
 python libe_agent_with_script_generator.py --mcp-server <path/to/mcp_server.mjs>
 ```
 Scripts saved to `generated_scripts/` directory.
