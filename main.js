@@ -237,6 +237,19 @@ document.getElementById("fillBtn").onclick = function() {
     setTimeout(() => {
       if (funcSel.options.length > 0) funcSel.selectedIndex = 0;
     }, 50);
+    // Enable templated and set variable names
+    const templatedEnable = document.getElementById("templatedEnable");
+    templatedEnable.checked = true;
+    document.getElementById("templatedFields").style.display = '';
+    const container = document.getElementById('templateVars');
+    container.innerHTML = '';
+    ['x0', 'x1'].forEach(name => {
+      const row = document.createElement('div');
+      row.className = 'template-var-row';
+      row.innerHTML = `<input name="template_var" placeholder="variable name" style="width: 200px; display: inline-block;" value="${name}">`;
+      container.appendChild(row);
+    });
+    setupTemplateVarButtons();
   };
 // Cluster section show/hide logic
 document.addEventListener('DOMContentLoaded', function() {
